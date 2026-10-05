@@ -38,6 +38,15 @@ return [
             'report' => false,
         ],
 
+        // Private documents (KYC, contracts, financial statements). Never served directly.
+        'private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/documents'),
+            'serve' => false,
+            'throw' => true,
+            'visibility' => 'private',
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

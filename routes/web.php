@@ -20,6 +20,10 @@ Route::get('/legal/{page}', [PageController::class, 'legal'])->name('legal');
 Route::get('/dashboard', fn () => redirect()->route(auth()->user()->homeRoute()))
     ->middleware(['auth', 'verified'])->name('dashboard');
 
+/* Private documents are only ever served through this authorised route. */
+Route::get('/documents/{document}', \App\Http\Controllers\DocumentController::class)
+    ->middleware(['auth', 'verified', 'throttle:60,1'])->name('documents.show');
+
 /* ------------------------------- Investor portal ------------------------------ */
 Route::prefix('investor')->name('investor.')->middleware(['auth', 'verified', 'role:INVESTOR'])->group(function () {
     Route::get('/', \App\Livewire\Investor\Dashboard::class)->name('dashboard');
@@ -51,38 +55,51 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'verified', 'role:AD
     Route::redirect('/', '/admin/dashboard');
     Route::get('/dashboard', \App\Livewire\Admin\Dashboard::class)->name('dashboard');
     Route::view('/profile', 'portal.profile', ['portal' => 'admin'])->name('profile');
-    foreach ([
-        // uri => [route name, title, permission|null, phase]
-        'users' => ['users', 'Staff', 'users.view', 'Phase 10'],
-        'investors' => ['investors', 'Investors', 'investors.view', 'Phase 10'],
-        'businesses' => ['businesses', 'Businesses', 'businesses.view', 'Phase 10'],
-        'kyc' => ['kyc', 'KYC', 'kyc.view', 'Phase 3'],
-        'documents' => ['documents', 'Documents', null, 'Phase 3'],
-        'projects' => ['projects', 'All Projects', 'projects.view', 'Phase 10'],
-        'projects/pending' => ['projects.pending', 'Pending Review', 'projects.review', 'Phase 10'],
-        'contracts/mudarabah' => ['contracts.mudarabah', 'Mudarabah Contracts', 'contracts.view', 'Phase 4'],
-        'contracts/musharakah' => ['contracts.musharakah', 'Musharakah Contracts', 'contracts.view', 'Phase 5'],
-        'contracts/murabaha' => ['contracts.murabaha', 'Murabaha Contracts', 'contracts.view', 'Phase 6'],
-        'investments' => ['investments', 'Investments', 'investments.view', 'Phase 10'],
-        'wallets' => ['wallets', 'Wallets', 'wallet.view', 'Phase 10'],
-        'ledger' => ['ledger', 'Ledger', 'ledger.view', 'Phase 10'],
-        'deposits' => ['deposits', 'Deposits', 'deposits.view', 'Phase 10'],
-        'withdrawals' => ['withdrawals', 'Withdrawals', 'withdrawals.view', 'Phase 10'],
-        'settlements' => ['settlements', 'Settlements', 'settlements.view', 'Phase 10'],
-        'shariah-reviews' => ['shariah-reviews', 'Shariah Review', 'shariah.review', 'Phase 10'],
-        'reports' => ['reports', 'Reports', 'reports.view', 'Phase 12'],
-        'audit-logs' => ['audit-logs', 'Audit Logs', 'audit.view', 'Phase 10'],
-        'settings' => ['settings', 'Settings', 'settings.manage', 'Phase 14'],
-        'notifications' => ['notifications', 'Notifications', null, 'Phase 14'],
-    ] as $uri => [$name, $title, $permission, $phase]) {
-        $route = Route::get("/$uri", Soon::class)->defaults('portal', 'admin')->defaults('title', $title)->defaults('phase', $phase)->name($name);
+
+    $pages = [
+        // uri => [route name, component, permission|null]
+        'users' => ['users', \App\Livewire\Admin\UsersTable::class, 'users.view'],
+        'investors' => ['investors', \App\Livewire\Admin\InvestorsTable::class, 'investors.view'],
+        'businesses' => ['businesses', \App\Livewire\Admin\BusinessesTable::class, 'businesses.view'],
+        'kyc' => ['kyc', \App\Livewire\Admin\KycTable::class, 'kyc.view'],
+        'kyc/businesses' => ['kyc.businesses', \App\Livewire\Admin\BusinessKycTable::class, 'kyc.view'],
+        'documents' => ['documents', \App\Livewire\Admin\DocumentsTable::class, null],
+        'projects' => ['projects', \App\Livewire\Admin\ProjectsTable::class, 'projects.view'],
+        'projects/pending' => ['projects.pending', \App\Livewire\Admin\PendingProjectsTable::class, 'projects.review'],
+        'projects/{project}' => ['projects.show', \App\Livewire\Admin\ProjectReview::class, 'projects.view'],
+        'contracts/mudarabah' => ['contracts.mudarabah', \App\Livewire\Admin\MudarabahContractsTable::class, 'contracts.view'],
+        'contracts/musharakah' => ['contracts.musharakah', \App\Livewire\Admin\MusharakahContractsTable::class, 'contracts.view'],
+        'contracts/murabaha' => ['contracts.murabaha', \App\Livewire\Admin\MurabahaContractsTable::class, 'contracts.view'],
+        'investments' => ['investments', \App\Livewire\Admin\InvestmentsTable::class, 'investments.view'],
+        'wallets' => ['wallets', \App\Livewire\Admin\WalletsTable::class, 'wallet.view'],
+        'ledger' => ['ledger', \App\Livewire\Admin\LedgerTable::class, 'ledger.view'],
+        'deposits' => ['deposits', \App\Livewire\Admin\DepositsTable::class, 'deposits.view'],
+        'withdrawals' => ['withdrawals', \App\Livewire\Admin\WithdrawalsTable::class, 'withdrawals.view'],
+        'settlements' => ['settlements', \App\Livewire\Admin\SettlementsTable::class, 'settlements.view'],
+        'shariah-reviews' => ['shariah-reviews', \App\Livewire\Admin\ShariahReviewsTable::class, 'shariah.review'],
+        'audit-logs' => ['audit-logs', \App\Livewire\Admin\AuditLogsTable::class, 'audit.view'],
+    ];
+    foreach ($pages as $uri => [$name, $component, $permission]) {
+        $route = Route::get("/$uri", $component)->name($name);
+        if ($permission) {
+            $route->middleware("permission:$permission");
+        }
+    }
+
+    // Arrive in later phases; access control is already enforced.
+    foreach (['reports' => ['Reports', 'reports.view', 'Phase 12'], 'settings' => ['Settings', 'settings.manage', 'Phase 14'], 'notifications' => ['Notifications', null, 'Phase 14']] as $uri => [$title, $permission, $phase]) {
+        $route = Route::get("/$uri", Soon::class)->defaults('portal', 'admin')->defaults('title', $title)->defaults('phase', $phase)->name($uri);
         if ($permission) {
             $route->middleware("permission:$permission");
         }
     }
 });
 
-Route::middleware('auth')->get('/profile', fn () => redirect()->route(auth()->user()->homeRoute() === 'admin.dashboard' ? 'admin.profile' : (auth()->user()->isBusiness() ? 'business.profile' : 'investor.profile')))->name('profile');
+Route::middleware('auth')->get('/profile', function () {
+    $u = auth()->user();
+
+    return redirect()->route($u->isStaffMember() ? 'admin.profile' : ($u->isBusiness() ? 'business.profile' : 'investor.profile'));
+})->name('profile');
 
 Route::post('/logout', function (\App\Livewire\Actions\Logout $logout) {
     $logout();

@@ -13,7 +13,11 @@ class DocumentPolicy
 {
     public function view(User $user, Document $document): bool
     {
-        if ($user->can('kyc.view') || $user->can('projects.view')) {
+        // Identity documents need KYC permission; other categories follow project/contract access.
+        $reviewer = $document->category === \App\Enums\DocumentCategory::Kyc
+            ? $user->can('kyc.view')
+            : ($user->can('projects.view') || $user->can('kyc.view'));
+        if ($reviewer) {
             return true;
         }
 
