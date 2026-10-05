@@ -23,5 +23,11 @@ Run tests: `php artisan test`.
 - Calculators (`app/Services/Finance`) are pure and independent of the UI.
 - Contract extension point: add a `*_contracts` table, a `ContractType` case and a calculator; users, wallets, ledger, documents and audit stay untouched.
 
+## Quality gates
+- 208 tests: money maths, calculators, ledger integrity, wallet/withdrawal flows, settlement, Murabaha stages, authorization, IDOR, CSRF, mass assignment, uploads, reports, UI components.
+- Concurrency tests (MySQL) race real database connections to prove a wallet cannot be double-spent and idempotency keys create exactly one record.
+
 ## Status
-See `docs/ROADMAP.md`.
+See `docs/ROADMAP.md` for what is done and what is not.
+
+> This software does not make any structure Shariah-compliant and is not a religious authority. Operating an investment or financing platform with public funds may require licences; obtain legal, regulatory and Shariah advice before handling real money.
