@@ -3,7 +3,7 @@
 use App\Models\AuditLog;
 use App\Models\User;
 
-function adminUser(): User
+function impersonationAdmin(): User
 {
     seedRoles();
     $u = User::factory()->create();
@@ -15,7 +15,7 @@ function adminUser(): User
 it('in local development an admin can log in as an investor, business or staff user and return, all audited', function () {
     $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
     app()->detectEnvironment(fn () => 'local');
-    $admin = adminUser();
+    $admin = impersonationAdmin();
     $staff = User::factory()->create();
     $staff->assignRole('STAFF');
     foreach ([makeInvestor()->user, makeBusiness()->user, $staff] as $target) {
@@ -29,7 +29,7 @@ it('in local development an admin can log in as an investor, business or staff u
 
 it('is not available outside local, to non-admins, or against admins and managers', function () {
     $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
-    $admin = adminUser();
+    $admin = impersonationAdmin();
     $target = makeInvestor()->user;
     app()->detectEnvironment(fn () => 'production');
     $this->actingAs($admin)->post(route('impersonate.start', $target))->assertNotFound();
@@ -38,5 +38,5 @@ it('is not available outside local, to non-admins, or against admins and manager
     $manager = User::factory()->create();
     $manager->assignRole('MANAGER');
     $this->actingAs($admin)->post(route('impersonate.start', $manager))->assertForbidden();
-    $this->actingAs($admin)->post(route('impersonate.start', adminUser()))->assertForbidden();
+    $this->actingAs($admin)->post(route('impersonate.start', impersonationAdmin()))->assertForbidden();
 });
