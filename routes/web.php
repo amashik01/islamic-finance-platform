@@ -49,8 +49,19 @@ Route::prefix('business')->name('business.')->middleware(['auth', 'verified', 'r
     Route::get('/', \App\Livewire\Business\Dashboard::class)->name('dashboard');
     Route::view('/profile', 'portal.profile', ['portal' => 'business'])->name('profile');
     Route::get('/projects', \App\Livewire\Business\Projects::class)->name('projects');
-    Route::get('/projects/create', \App\Livewire\Business\ProjectWizard::class)->name('projects.create');
-    Route::get('/projects/{project}/edit', \App\Livewire\Business\ProjectWizard::class)->name('projects.edit');
+    Route::get('/projects/create', \App\Livewire\Business\Aqd\Chooser::class)->name('projects.create');
+    Route::get('/projects/create/mudarabah', \App\Livewire\Business\Aqd\MudarabahWizard::class)->name('projects.create.mudarabah');
+    Route::get('/projects/create/musharakah', \App\Livewire\Business\Aqd\MusharakahWizard::class)->name('projects.create.musharakah');
+    Route::get('/projects/create/murabaha', \App\Livewire\Business\Aqd\MurabahaWizard::class)->name('projects.create.murabaha');
+    // Editing opens the dedicated form of the project's own aqd; the wizard authorises owner + editable status.
+    Route::get('/projects/{project}/edit', function (\App\Models\Project $project) {
+        \Illuminate\Support\Facades\Gate::authorize('update', $project);
+
+        return redirect()->route('business.projects.edit.'.strtolower($project->contract_type->value), $project);
+    })->name('projects.edit');
+    Route::get('/projects/{project}/edit/mudarabah', \App\Livewire\Business\Aqd\MudarabahWizard::class)->name('projects.edit.mudarabah');
+    Route::get('/projects/{project}/edit/musharakah', \App\Livewire\Business\Aqd\MusharakahWizard::class)->name('projects.edit.musharakah');
+    Route::get('/projects/{project}/edit/murabaha', \App\Livewire\Business\Aqd\MurabahaWizard::class)->name('projects.edit.murabaha');
     Route::get('/projects/{project}', \App\Livewire\Business\ProjectDetails::class)->name('projects.show');
     Route::get('/funding', \App\Livewire\Business\Funding::class)->name('funding');
     Route::get('/contracts', \App\Livewire\Business\Contracts::class)->name('contracts');

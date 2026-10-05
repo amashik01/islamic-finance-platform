@@ -393,13 +393,13 @@ it('the admin project page shows the Wakil, principal and the review controls; t
     $this->actingAs(makeBusiness()->user)->get(route('business.projects.show', $project))->assertForbidden();
 });
 
-it('the wizard offers only eligible Wakils, only for an aqd that has Wakalah roles', function () {
+it('the Murabaha form offers only eligible Wakils; Mudarabah and Musharakah forms offer no Wakil at all', function () {
     makeWakil('Rahim Enterprise');
     makeWakil('Hidden Suspended', ['active' => false]);
     $biz = makeBusiness();
-    \Livewire\Livewire::actingAs($biz->user)->test(\App\Livewire\Business\ProjectWizard::class)
-        ->set('form.contract_type', 'MURABAHA')->set('step', 3)
+    \Livewire\Livewire::actingAs($biz->user)->test(\App\Livewire\Business\Aqd\MurabahaWizard::class)->set('step', 3)
         ->assertSee('Rahim Enterprise — Wakil')->assertSee('Wakil for Purchase')->assertSee('Muwakkil')->assertDontSee('Hidden Suspended');
-    \Livewire\Livewire::actingAs($biz->user)->test(\App\Livewire\Business\ProjectWizard::class)
-        ->set('form.contract_type', 'MUDARABAH')->set('step', 3)->assertDontSee('Appointed Wakil');
+    foreach ([\App\Livewire\Business\Aqd\MudarabahWizard::class, \App\Livewire\Business\Aqd\MusharakahWizard::class] as $cls) {
+        \Livewire\Livewire::actingAs($biz->user)->test($cls)->set('step', 3)->assertDontSee('Appointed Wakil')->assertDontSee('Wakil for Purchase');
+    }
 });

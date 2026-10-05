@@ -203,6 +203,7 @@ it('project workflow: submit -> shariah review -> approve -> publish, all audite
     $project = makeProject(['status' => ProjectStatus::Draft]);
     $contract = activeContract($project);
     $contract->forceFill(['status' => ContractStatus::Draft])->save();
+    withAqdTerms($contract);
     $admin = User::factory()->create();
     $wf = app(ProjectWorkflow::class);
 

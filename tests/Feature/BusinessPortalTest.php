@@ -2,7 +2,8 @@
 
 use App\Enums\ContractType;
 use App\Enums\ProjectStatus;
-use App\Livewire\Business\ProjectWizard;
+use App\Livewire\Business\Aqd\MudarabahWizard;
+use App\Livewire\Business\Aqd\MurabahaWizard;
 use App\Models\Project;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -13,53 +14,47 @@ it('renders every business page', function (string $uri) {
     $this->actingAs($b->user)->get($uri)->assertOk();
 })->with(['/business', '/business/projects', '/business/projects/create', '/business/funding', '/business/contracts', '/business/payments', '/business/settlements', '/business/documents', '/business/notifications', '/business/profile']);
 
-function fillBasics($c)
-{
-    return $c->set('form.title', 'Dairy Expansion')->set('form.description', 'Expanding our dairy farm with a second shed and cold chain storage for growth.')
-        ->set('form.industry', 'Agriculture')->set('form.purpose', 'Build shed')->set('form.key_risks', 'Milk price and disease risk')->set('form.duration_months', '12');
-}
-
-it('walks the wizard for a Mudarabah project and submits it for review', function () {
+it('walks the dedicated Mudarabah form and submits it for review', function () {
     Storage::fake('private');
     $b = makeBusiness();
     $this->actingAs($b->user);
-    $c = fillBasics(Livewire::test(ProjectWizard::class))->call('next')->assertSet('step', 2)->assertHasNoErrors();
-    $c->set('form.contract_type', 'MUDARABAH')->call('next')->assertSet('step', 3);
-    $c->set('form.investor_profit', '70')->set('form.business_profit', '30')->set('form.business_plan', 'Detailed plan')->call('next')->assertSet('step', 4);
-    $c->set('form.capital_required', '100000')->set('form.minimum_amount', '5000')->call('next')->assertSet('step', 5)->assertSet('error', null);
-
+    $c = Livewire::test(MudarabahWizard::class)->set('form', aqdForm(ContractType::Mudarabah));
+    foreach (range(1, 4) as $n) {
+        $c->call('next')->assertSet('step', $n + 1)->assertSet('error', null)->assertHasNoErrors();
+    }
     expect(Project::count())->toBe(1);
     $p = Project::first();
-    expect($p->status)->toBe(ProjectStatus::Draft)->and($p->contract->mudarabah->investor_profit_bps)->toBe(7000);
+    expect($p->status)->toBe(ProjectStatus::Draft)->and($p->contract->mudarabah->investor_profit_bps)->toBe(7000)->and($p->contract->aqd_form_version)->toBe('MUDARABAH-FORM-1')
+        ->and($p->contract->aqd_terms['permitted_activities'])->not->toBeEmpty();
 
+    $c->call('next')->call('next')->assertSet('step', 7);
     $c->set('docTitle', 'Plan')->set('docFile', UploadedFile::fake()->createWithContent('plan.pdf', "%PDF-1.4\n%%EOF"))->call('uploadDocument')->assertHasNoErrors();
     expect($p->documents()->count())->toBe(1);
-    $c->call('next')->assertSet('step', 6)->call('next')->assertSet('step', 7)->call('submit');
+    $c->call('next')->assertSet('step', 8)->assertSee('Contract preview')->call('submit');
     expect($p->fresh()->status)->toBe(ProjectStatus::Review);
 });
 
 it('validates each step and blocks progress, keeping entered state', function () {
     $this->actingAs(makeBusiness()->user);
-    $c = Livewire::test(ProjectWizard::class)->call('next')->assertHasErrors(['form.title', 'form.description'])->assertSet('step', 1);
-    fillBasics($c)->call('next')->assertSet('step', 2)->call('back')->assertSet('step', 1)->assertSet('form.title', 'Dairy Expansion');
-    $c->call('next')->call('next')->assertHasErrors('form.contract_type')->assertSet('step', 2);
+    $c = Livewire::test(MudarabahWizard::class)->call('next')->assertHasErrors(['form.title', 'form.description'])->assertSet('step', 1);
+    $c->set('form', aqdForm(ContractType::Mudarabah))->call('next')->assertSet('step', 2)->call('back')->assertSet('step', 1)->assertSet('form.title', 'Dairy Expansion');
+    $c->call('next')->set('form.permitted_activities', '')->call('next')->assertHasErrors('form.permitted_activities')->assertSet('step', 2);
 });
 
 it('blocks mudarabah ratios that do not total 100% on the server', function () {
     $this->actingAs(makeBusiness()->user);
-    $c = fillBasics(Livewire::test(ProjectWizard::class))->call('next')->set('form.contract_type', 'MUDARABAH')->call('next');
-    $c->set('form.investor_profit', '70')->set('form.business_profit', '20')->set('form.business_plan', 'x')->call('next')
-        ->set('form.capital_required', '100000')->call('next')->assertSet('step', 4)->assertSet('error', 'Investor and business profit ratios must be positive and total 100%.');
+    $c = Livewire::test(MudarabahWizard::class)->set('form', aqdForm(ContractType::Mudarabah, ['business_profit' => '20']));
+    $c->call('next')->assertSet('step', 1)->assertSet('error', fn ($e) => str_contains($e, 'total 100%'));   // refused on the server before anything is saved
     expect(Project::count())->toBe(0);
 });
 
 it('shows the Murabaha cost + profit = price calculation and saves the sale structure', function () {
     $this->actingAs(makeBusiness()->user);
-    $c = fillBasics(Livewire::test(ProjectWizard::class))->call('next')->set('form.contract_type', 'MURABAHA')->call('next');
-    $c->set('form.delivery_terms', 'Delivered to shop')->set('form.payment_terms', '4 monthly installments')->set('form.installments', '4')
-        ->set('form.ownership_info', 'Bought by financier in own name')->set('form.possession_info', 'Held in warehouse before sale')->call('next');
-    $c->set('form.asset_name', 'Refrigerators')->set('form.supplier', 'Supplier Ltd')->set('form.quantity', '4')->set('form.unit_cost', '25000')->set('form.sale_profit', '10000')
-        ->assertSee('BDT 100,000.00')->assertSee('BDT 110,000.00')->assertSee('not interest')->call('next')->assertSet('step', 5);
+    $c = Livewire::test(MurabahaWizard::class)->set('form', aqdForm(ContractType::Murabaha));
+    foreach (range(1, 5) as $n) {
+        $c->call('next')->assertSet('error', null)->assertHasNoErrors();
+    }
+    $c->assertSet('step', 6)->assertSee('BDT 100,000.00')->assertSee('BDT 110,000.00')->assertSee('not interest')->call('next')->assertSet('step', 7);
     $m = Project::first()->contract->murabaha;
     expect($m->sale_price)->toBe(11000000)->and($m->delivery_terms)->toContain('Possession (qabd)');
 });

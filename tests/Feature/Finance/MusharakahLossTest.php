@@ -67,7 +67,9 @@ it('the application form cannot select an agreed loss ratio', function () {
     $d = ['title' => 'Mk', 'description' => 'Desc', 'industry' => 'X', 'purpose' => 'Y', 'duration_months' => 12, 'risk_level' => 'MEDIUM', 'minimum_amount' => '5000',
         'contract_type' => 'MUSHARAKAH', 'total_capital' => '1000000', 'investor_contribution' => '700000', 'business_contribution' => '300000', 'investor_profit' => '60', 'business_profit' => '40',
         'loss_basis' => 'AGREED_RATIO'];   // a tampered request
-    $p = app(ProjectBuilder::class)->saveDraft($b, $d);
+    expect(fn () => app(ProjectBuilder::class)->saveDraft($b, $d))->toThrow(FinancialException::class, 'MUS-LOSS-CAPITAL');   // refused outright, nothing saved
+    expect(\App\Models\Project::count())->toBe(0);
+    $p = app(ProjectBuilder::class)->saveDraft($b, ['loss_basis' => 'CAPITAL_RATIO'] + $d);
     expect($p->contract->musharakah->loss_allocation_basis)->toBe(LossAllocationBasis::CapitalRatio);
     expect(array_key_exists('form.loss_basis', \App\Support\ProjectFormRules::forStep(3, 'MUSHARAKAH')))->toBeFalse();
 });

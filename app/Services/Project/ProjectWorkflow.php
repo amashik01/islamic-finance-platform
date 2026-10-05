@@ -37,6 +37,14 @@ class ProjectWorkflow
         if ($p->business->kyc_status !== KycStatus::Approved) {
             throw new FinancialException('Your business must be verified before submitting a project.');
         }
+        // The contract-specific terms must be complete: a project without them (or created before the aqd forms) is LEGACY.
+        if ($p->contract->aqd_form_version === null) {
+            throw new FinancialException('This project predates the contract-specific forms. Open it in the '.$p->contract_type->label().' form and complete its terms before submitting.');
+        }
+        $missing = \App\Domain\Aqd\AqdRegistry::for($p->contract_type)->missing($p->contract->aqd_terms ?? []);
+        if ($missing) {
+            throw new FinancialException('Complete the contract terms before submitting: '.implode(', ', array_slice($missing, 0, 6)).(count($missing) > 6 ? ' and '.(count($missing) - 6).' more' : '').'.');
+        }
         $p = $this->move($p, 'submit', $by);
         ShariahReview::firstOrCreate(['project_id' => $p->id, 'status' => ShariahReviewStatus::Pending], ['contract_id' => $p->contract->id]);
         $this->notify->to($p->business->user, 'Project submitted', $p->title.' was submitted for review.', 'info', route('business.projects.show', $p));

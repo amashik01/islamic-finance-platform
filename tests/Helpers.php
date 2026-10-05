@@ -183,7 +183,7 @@ function realProject(\App\Enums\ContractType $type = \App\Enums\ContractType::Mu
         \App\Enums\ContractType::Musharakah => ['contract_type' => 'MUSHARAKAH', 'total_capital' => '1000000', 'investor_contribution' => '700000', 'business_contribution' => '300000', 'investor_profit' => '70', 'business_profit' => '30'],
         \App\Enums\ContractType::Murabaha => ['contract_type' => 'MURABAHA', 'asset_name' => 'Cold room', 'supplier' => 'Supplier Ltd', 'quantity' => 2, 'unit_cost' => '50000', 'sale_profit' => '10000', 'installments' => 4, 'delivery_terms' => 'Delivery to premises'],
     };
-    $project = app(\App\Services\Project\ProjectBuilder::class)->saveDraft($business, $overrides + $terms + $base);
+    $project = app(\App\Services\Project\ProjectBuilder::class)->saveDraft($business, $overrides + $terms + $base + ['aqd_terms' => completeAqdTerms($type)]);
     $wf = app(\App\Services\Project\ProjectWorkflow::class);
     $wf->submit($project, $business->user);
     $wf->approve($project->fresh(), $admin);
@@ -255,6 +255,25 @@ function murabahaFormData(array $over = []): array
     return $over + wakilFormData(['contract_type' => 'MURABAHA']) + ['asset_name' => 'Cold room', 'supplier' => 'Supplier Ltd', 'quantity' => 2, 'unit_cost' => '50000', 'sale_profit' => '10000', 'installments' => 4, 'delivery_terms' => 'Delivery to premises'];
 }
 
+/** A complete, valid set of aqd-specific terms (every required field the form asks for) for the contract type. */
+function completeAqdTerms(\App\Enums\ContractType $type, array $over = []): array
+{
+    $def = \App\Domain\Aqd\AqdRegistry::for($type);
+    $terms = [];
+    foreach ($def->fieldMap() as $f) {
+        if (in_array($f['key'], $def->commonKeys(), true) || in_array($f['key'], $def->typedKeys(), true)) {
+            continue;
+        }
+        $terms[$f['key']] = match ($f['type']) {
+            'checkbox' => true, 'select' => $f['default'] ?? array_key_first($f['options']), 'date' => now()->addDays(30)->toDateString(), 'number' => 3, 'money' => '1000', 'percent' => '50',
+            default => 'Sample '.strtolower($f['label']).' for the test project.',
+        };
+    }
+    $terms['use_promise'] = false;
+
+    return $over + $terms;
+}
+
 /** Walks one Wakalah appointment through the Wakil's acceptance and the appointment-level Shariah review. */
 function confirmWakalah(\App\Models\WakalahAppointment $a, \App\Models\User $wakil): \App\Models\WakalahAppointment
 {
@@ -266,4 +285,28 @@ function confirmWakalah(\App\Models\WakalahAppointment $a, \App\Models\User $wak
     $svc->review($a->fresh(), $reviewer, \App\Enums\ShariahReviewStatus::Approved, 'Scope and principal reviewed.');
 
     return $a->fresh();
+}
+
+/** A complete, valid wizard form for the aqd: identification + typed terms + every required aqd field. */
+function aqdForm(\App\Enums\ContractType $type, array $over = []): array
+{
+    $id = ['title' => 'Dairy Expansion', 'description' => 'Expanding our dairy farm with a second shed and cold chain storage for growth.', 'industry' => 'Agriculture', 'purpose' => 'Build shed',
+        'duration_months' => '12', 'risk_level' => 'MEDIUM', 'key_risks' => 'Milk price and disease risk', 'closing_at' => ''];
+    $typed = match ($type) {
+        \App\Enums\ContractType::Mudarabah => ['capital_required' => '100000', 'minimum_amount' => '5000', 'investor_profit' => '70', 'business_profit' => '30', 'business_plan' => 'Detailed business plan', 'expected_revenue' => '', 'expected_expenses' => ''],
+        \App\Enums\ContractType::Musharakah => ['total_capital' => '1000000', 'investor_contribution' => '700000', 'business_contribution' => '300000', 'investor_profit' => '60', 'business_profit' => '40', 'minimum_amount' => '5000',
+            'project_activity' => 'Joint dairy trade', 'financial_assumptions' => 'Conservative demand assumptions'],
+        \App\Enums\ContractType::Murabaha => ['asset_name' => 'Refrigerators', 'asset_description' => 'Four commercial units', 'quantity' => '4', 'unit_cost' => '25000', 'supplier' => 'Supplier Ltd', 'sale_profit' => '10000', 'installments' => '4',
+            'delivery_terms' => 'Delivered to the shop', 'payment_terms' => '4 monthly instalments', 'ownership_info' => 'Bought by the seller in its own name', 'possession_info' => 'Held in the seller warehouse before the sale'],
+    };
+
+    return $over + $id + $typed + completeAqdTerms($type) + ['wakil_id' => '', 'wakalah_roles' => [], 'muwakkil' => '', 'wakalah_scope' => '', 'wakalah_authority' => []];
+}
+
+/** Gives a fixture contract the complete aqd-specific terms a real project has (fixtures predate the aqd forms). */
+function withAqdTerms(\App\Models\Contract $contract): \App\Models\Contract
+{
+    $contract->forceFill(['aqd_terms' => completeAqdTerms($contract->contract_type), 'aqd_form_version' => \App\Domain\Aqd\AqdRegistry::for($contract->contract_type)->version()])->save();
+
+    return $contract->fresh();
 }

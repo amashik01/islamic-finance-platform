@@ -14,7 +14,7 @@ class Contract extends Model
 {
     use \App\Models\Concerns\EnforcesBdt;
 
-    protected $guarded = ['id', 'status', 'approved_by', 'approved_at'];
+    protected $guarded = ['id', 'status', 'approved_by', 'approved_at', 'aqd_terms', 'aqd_form_version'];
 
     protected function casts(): array
     {
@@ -25,6 +25,7 @@ class Contract extends Model
             'start_date' => 'date',
             'end_date' => 'date',
             'approved_at' => 'datetime',
+            'aqd_terms' => 'array',
         ];
     }
 

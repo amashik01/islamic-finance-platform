@@ -41,6 +41,8 @@ class ProjectBuilder
     public function saveDraft(Business $business, array $d, ?Project $project = null): Project
     {
         $type = ContractType::from($d['contract_type']);
+        // Shariah-sensitive rules are enforced on the server for every caller, whatever the UI sent.
+        \App\Domain\Aqd\AqdRegistry::for($type)->assertShariahRules($d);
 
         return DB::transaction(function () use ($business, $d, $project, $type) {
             if ($project) {
@@ -70,6 +72,10 @@ class ProjectBuilder
             $contract->fill(['contract_type' => $type, 'end_date' => now()->addMonths((int) $d['duration_months'])]);
             if (! $contract->exists) {
                 $contract->forceFill(['status' => ContractStatus::Draft, 'created_by' => $business->user_id]);
+            }
+            if (isset($d['aqd_terms']) && is_array($d['aqd_terms'])) {
+                $def = \App\Domain\Aqd\AqdRegistry::for($type);
+                $contract->forceFill(['aqd_terms' => $d['aqd_terms'], 'aqd_form_version' => $def->version()]);
             }
             $contract->save();
             $before = $contract->exists && ($existing = $contract->terms) ? array_intersect_key($existing->getAttributes(), $terms) : null;

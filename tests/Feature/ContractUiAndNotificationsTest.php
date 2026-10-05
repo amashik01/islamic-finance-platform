@@ -68,7 +68,7 @@ it('notifies the right people for the key events', function () {
     $admin->assignRole('ADMIN');
     $inv = makeInvestor(10000000);
     $project = makeProject(['status' => ProjectStatus::Draft]);
-    activeContract($project)->forceFill(['status' => ContractStatus::Draft])->save();
+    withAqdTerms(activeContract($project)->forceFill(['status' => ContractStatus::Draft]));
 
     app(InvestmentService::class); // warm
     app(WalletService::class)->requestWithdrawal($inv->user, Money::minor(200000), 'n-w');
