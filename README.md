@@ -5,7 +5,10 @@ Custom UI throughout — no Filament, AdminLTE, Nova, Backpack or dashboard temp
 
 MVP contracts: **Mudarabah**, **Musharakah**, **Murabaha** (modelled separately; Murabaha is an asset sale, never "interest").
 
-## Run locally
+## Quick start
+**Windows:** double-click `setup.bat`. **macOS/Linux:** run `./setup.sh`. It installs everything, creates a SQLite database with demo data and opens http://localhost:8000.
+
+## Run locally (manual)
 ```bash
 composer install && npm install && npm run build
 cp .env.example .env && php artisan key:generate
