@@ -70,7 +70,7 @@ class ProjectWorkflow
             throw new FinancialException('A Shariah review approval is required before publishing.');
         }
         if ($this->wakalah->hasUnconfirmed($p)) {
-            throw new FinancialException('The Wakalah appointment has not been confirmed by a Shariah review. Record the review again after the Wakil was selected.');
+            throw new FinancialException('A Wakalah appointment is not yet confirmed: the Wakil must accept it and a Shariah reviewer must review it (a project-level approval does not confirm a Wakalah).');
         }
 
         return $this->move($p, 'publish', $by, null, fn (Project $p) => $p->forceFill(['published_at' => now()])->save());
@@ -101,9 +101,6 @@ class ProjectWorkflow
             $review = $p->shariahReviews()->latest('id')->first() ?? new ShariahReview(['project_id' => $p->id, 'contract_id' => $p->contract?->id]);
             $review->forceFill(['status' => $status, 'reviewer_id' => $reviewer->id, 'notes' => $notes, 'reviewed_at' => now()])->save();
             $this->audit->record('shariah.'.strtolower($status->value), $p, null, ['status' => $status->value], $notes);
-            if ($status === ShariahReviewStatus::Approved) {
-                $this->wakalah->confirmForProject($p, $reviewer);   // a selected Wakil is only confirmed by the review, never by selection
-            }
 
             return $review;
         });

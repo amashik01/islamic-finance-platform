@@ -81,7 +81,7 @@ class ProjectBuilder
             // Wakalah: only when the caller supplied the field, so programmatic drafts that ignore Wakalah are untouched.
             if (array_key_exists('wakil_id', $d)) {
                 $wakilId = filled($d['wakil_id']) ? (int) $d['wakil_id'] : null;
-                $this->wakalah->assign($project, $wakilId, (array) ($d['wakalah_roles'] ?? []), $business->user);
+                $this->wakalah->assign($project, $wakilId, (array) ($d['wakalah_roles'] ?? []), $business->user, null, ['muwakkil' => $d['muwakkil'] ?? null, 'scope' => $d['wakalah_scope'] ?? null, 'authority' => $d['wakalah_authority'] ?? []]);
             }
             $this->audit->record('project.draft_saved', $project);
 

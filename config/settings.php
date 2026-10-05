@@ -25,6 +25,11 @@ return [
         'session_minutes' => ['Session lifetime (minutes)', 'text', '120', ['required', 'integer', 'between:5,1440']],
         'login_attempts' => ['Failed logins before lockout', 'text', '5', ['required', 'integer', 'between:3,20']],
     ],
+    'shariah' => [
+        'wakalah_requires_acceptance' => ['Wakalah appointments need the Wakil\'s explicit acceptance (turn off only on written Shariah-board approval)', 'bool', '1', ['boolean']],
+        'wakalah_requires_review' => ['Each Wakalah appointment needs its own Shariah review (turn off only on written Shariah-board approval)', 'bool', '1', ['boolean']],
+        'platform_role' => ['Approved platform role (UNSET blocks live money; see docs/shariah/OPEN_SCHOLAR_QUESTIONS.md)', 'text', 'UNSET', ['required', 'in:UNSET,WAKIL_ARRANGER,MUDARIB,DIRECT_ARRANGER,PRINCIPAL_INVESTOR,OTHER_APPROVED']],
+    ],
     'compliance' => [
         'kyc_required_investor' => ['Investor KYC required to invest', 'bool', '1', ['boolean']],
         'kyc_required_business' => ['Business verification required to submit projects', 'bool', '1', ['boolean']],

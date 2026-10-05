@@ -108,6 +108,19 @@
             </div>
         </x-ui.card>
         <x-wakalah.summary :project="$p" />
+        @can('shariah.review')
+            @foreach($p->currentWakalahAppointments()->where('status', 'PENDING_SHARIAH_REVIEW')->get() as $pa)
+                <x-ui.card :title="'Review Wakalah — '.($pa->wakalah_role?->label() ?? 'appointment')" wire:key="rv-{{ $pa->id }}">
+                    <p class="text-xs text-ink-600">Principal: {{ \App\Enums\WakalahPrincipal::from($pa->muwakkil)->label() }}. Scope: {{ $pa->scope }}</p>
+                    <x-ui.field label="Notes / conditions" model="wakalahNotes" />
+                    <div class="mt-2 flex flex-wrap gap-2">
+                        <x-ui.button wire:click="reviewWakalah({{ $pa->id }}, 'APPROVED')">Approve</x-ui.button>
+                        <x-ui.button variant="secondary" wire:click="reviewWakalah({{ $pa->id }}, 'NEEDS_REVISION')">Request revision</x-ui.button>
+                        <x-ui.button variant="secondary" wire:click="reviewWakalah({{ $pa->id }}, 'REJECTED')">Reject</x-ui.button>
+                    </div>
+                </x-ui.card>
+            @endforeach
+        @endcan
         @can('projects.edit')
             @if(in_array($p->status, [S::Draft, S::NeedsRevision, S::Review, S::Approved], true))
             <x-ui.card title="Appointment of Wakil">
@@ -115,8 +128,15 @@
                     <x-ui.field label="Select Wakil" model="wakilId" type="select"><option value="">No Wakil</option>@foreach($wakils as $w)<option value="{{ $w->user_id }}">{{ $w->display_name }} — Wakil</option>@endforeach</x-ui.field>
                     @if(\App\Enums\WakalahRole::forContract($p->contract_type))
                         <fieldset><legend class="label">Wakalah Role</legend>
-                            @foreach(\App\Enums\WakalahRole::optionsFor($p->contract_type) as $rv => $rl)<label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="wakalahRoles" value="{{ $rv }}"> {{ $rl }}</label>@endforeach
+                            @foreach(\App\Enums\WakalahRole::forContract($p->contract_type) as $role)
+                                <div wire:key="role-{{ $role->value }}"><label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="wakalahRoles" value="{{ $role->value }}"> {{ $role->label() }}</label>
+                                @foreach($role->acts() as $act => $desc)<label class="ml-6 flex items-center gap-2 text-xs text-ink-600"><input type="checkbox" wire:model="wakalahAuthority" value="{{ $act }}"> {{ $desc }}</label>@endforeach</div>
+                            @endforeach
                         </fieldset>
+                        <x-ui.field label="Muwakkil (principal)" model="muwakkil" type="select" help="Never assumed: the party that appoints the Wakil."><option value="">Select the principal</option>@foreach(\App\Enums\WakalahPrincipal::options() as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</x-ui.field>
+                        <x-ui.field label="Scope" model="wakalahScope" :rows="3" help="What the Wakil may do, for which asset. Outside this scope the Wakil has no authority." />
+                    @else
+                        <p class="text-xs text-ink-500">{{ $p->contract_type->label() }} defines no Wakalah structure; a Wakil cannot be attached to it.</p>
                     @endif
                     <x-ui.field label="Reason (recorded in the audit log)" model="wakalahReason" />
                     <x-ui.button wire:click="saveWakil" loading="saveWakil" loading-text="Saving...">Save appointment</x-ui.button>

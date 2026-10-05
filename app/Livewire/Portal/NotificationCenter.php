@@ -24,7 +24,7 @@ class NotificationCenter extends Component
     public function render()
     {
         $u = auth()->user();
-        $portal = $u->isStaffMember() ? 'admin' : ($u->isBusiness() ? 'business' : 'investor');
+        $portal = $u->isStaffMember() ? 'admin' : ($u->isBusiness() ? 'business' : ($u->isWakil() ? 'wakil' : 'investor'));
 
         return view('livewire.portal.notification-center', ['notifications' => $u->notifications()->latest()->paginate(15)])
             ->layout("components.$portal-layout", ['title' => 'Notifications']);

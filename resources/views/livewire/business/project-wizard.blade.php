@@ -127,7 +127,7 @@
             <p class="text-sm text-ink-700">Submitting sends the project to our review team, followed by Shariah review. You cannot edit it while it is under review, unless a revision is requested.</p>
             <x-ui.alert type="warning" title="No guarantees">{{ config('finance.shariah_disclaimer') }} Approval does not guarantee funding.</x-ui.alert>
         @endif
-        @if($step === 3 && $type)
+        @if($step === 3 && $type && $wakalahRoles)
             <div class="rounded-card border border-ink-200 p-4">
                 <x-ui.field label="Appointed Wakil (optional)" model="form.wakil_id" type="select" help="A Wakil is an agent acting on a principal's behalf under a Wakalah arrangement. Only approved, active Wakils are listed. Selecting a Wakil is a proposal; it is not an approved Wakalah until the Shariah review confirms it.">
                     <option value="">Select Wakil</option>
@@ -135,11 +135,16 @@
                 </x-ui.field>
                 @if($wakalahRoles)
                     <fieldset class="mt-3"><legend class="label">Wakalah Role</legend>
-                        @foreach($wakalahRoles as $rv => $rl)
-                            <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="form.wakalah_roles" value="{{ $rv }}"> {{ $rl }}</label>
+                        @foreach(\App\Enums\WakalahRole::forContract(\App\Enums\ContractType::from($type)) as $role)
+                            <div wire:key="wr-{{ $role->value }}"><label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="form.wakalah_roles" value="{{ $role->value }}"> {{ $role->label() }}</label>
+                            @foreach($role->acts() as $act => $desc)<label class="ml-6 flex items-center gap-2 text-xs text-ink-600"><input type="checkbox" wire:model="form.wakalah_authority" value="{{ $act }}"> {{ $desc }}</label>@endforeach</div>
                         @endforeach
-                        <p class="mt-1 text-xs text-ink-500">Each role is a separate Wakalah appointment. Selecting a Wakil does not create the Murabaha sale: purchase, ownership and possession (qabd) must still take place first.</p>
+                        <p class="mt-1 text-xs text-ink-500">Each role is a separate Wakalah appointment with its own authority. Selecting a Wakil does not create the Murabaha sale: purchase, ownership and possession (qabd) must still take place first.</p>
                     </fieldset>
+                    <x-ui.field label="Muwakkil (principal)" model="form.muwakkil" type="select" help="Who appoints the Wakil. Never assumed; it is reviewed."><option value="">Select the principal</option>@foreach(\App\Enums\WakalahPrincipal::options() as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</x-ui.field>
+                    <x-ui.field label="Scope of the Wakalah" model="form.wakalah_scope" :rows="3" help="What the Wakil may do and for which asset. Outside this scope the Wakil has no authority." />
+                @else
+                    <p class="mt-2 text-xs text-ink-500">{{ ContractType::from($type)->label() }} defines no Wakalah structure, so a Wakil cannot be attached to it.</p>
                 @endif
                 @error('form.wakil_id')<p class="field-error" role="alert">{{ $message }}</p>@enderror
             </div>

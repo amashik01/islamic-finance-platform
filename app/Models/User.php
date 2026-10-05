@@ -77,7 +77,7 @@ class User extends Authenticatable implements MustVerifyEmail
         return match (true) {
             $this->isStaffMember() => 'admin.dashboard',
             $this->isBusiness() => 'business.dashboard',
-            $this->isWakil() => 'home',   // no Wakil portal yet: Wakils are appointed, they do not operate in the app
+            $this->isWakil() => 'wakil.appointments',
             default => 'investor.dashboard',
         };
     }

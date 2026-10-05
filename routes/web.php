@@ -64,6 +64,14 @@ Route::prefix('business')->name('business.')->middleware(['auth', 'verified', 'r
     }
 });
 
+/* -------------------------------- Wakil portal -------------------------------- */
+Route::prefix('wakil')->name('wakil.')->middleware(['auth', 'verified', 'role:WAKIL'])->group(function () {
+    Route::redirect('/', '/wakil/appointments');
+    Route::get('/notifications', \App\Livewire\Portal\NotificationCenter::class)->name('notifications');
+    Route::get('/appointments', \App\Livewire\Wakil\Appointments::class)->name('appointments');
+    Route::view('/profile', 'portal.profile', ['portal' => 'wakil'])->name('profile');
+});
+
 /* -------------------------------- Admin portal -------------------------------- */
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'verified', 'role:ADMIN|MANAGER|STAFF'])->group(function () {
     Route::redirect('/', '/admin/dashboard');
@@ -111,7 +119,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'verified', 'role:AD
 Route::middleware('auth')->get('/profile', function () {
     $u = auth()->user();
 
-    return redirect()->route($u->isStaffMember() ? 'admin.profile' : ($u->isBusiness() ? 'business.profile' : 'investor.profile'));
+    return redirect()->route($u->isStaffMember() ? 'admin.profile' : ($u->isBusiness() ? 'business.profile' : ($u->isWakil() ? 'wakil.profile' : 'investor.profile')));
 })->name('profile');
 
 Route::post('/logout', function (\App\Livewire\Actions\Logout $logout) {

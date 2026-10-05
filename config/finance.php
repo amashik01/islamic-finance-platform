@@ -25,5 +25,8 @@ return [
         'business' => ['KYC', 'BUSINESS_REGISTRATION'],
     ],
 
+    // Sandbox: demo and test deployments. Live money requires FINANCE_SANDBOX=false AND an approved platform role setting.
+    'sandbox' => (bool) env('FINANCE_SANDBOX', env('APP_ENV') !== 'production'),
+
     'shariah_disclaimer' => 'Shariah compliance depends on the specific contractual structure, transaction sequence, underlying assets, documentation and qualified scholarly review. This platform is software and does not act as a religious authority.',
 ];

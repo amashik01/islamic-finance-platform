@@ -21,4 +21,7 @@ return [
     'business' => [
         '' => [['Dashboard', 'business.dashboard', 'home'], ['Projects', 'business.projects', 'briefcase'], ['Create Project', 'business.projects.create', 'clipboard'], ['Funding', 'business.funding', 'cash'], ['Contracts', 'business.contracts', 'document'], ['Payments', 'business.payments', 'swap'], ['Settlements', 'business.settlements', 'scale'], ['Documents', 'business.documents', 'folder'], ['Reports', 'business.reports', 'chart'], ['Notifications', 'business.notifications', 'bell'], ['Profile', 'business.profile', 'users'], ['Settings', 'business.settings', 'cog']],
     ],
+    'wakil' => [
+        '' => [['Appointments', 'wakil.appointments', 'document'], ['Notifications', 'wakil.notifications', 'bell'], ['Profile', 'wakil.profile', 'users']],
+    ],
 ];

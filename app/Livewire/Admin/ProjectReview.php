@@ -29,6 +29,14 @@ class ProjectReview extends Component
 
     public string $wakalahReason = '';
 
+    public string $muwakkil = '';
+
+    public string $wakalahScope = '';
+
+    public array $wakalahAuthority = [];
+
+    public string $wakalahNotes = '';
+
     private const NEEDS_REASON = ['revision', 'reject', 'pause', 'cancel'];
 
     public function mount(Project $project): void
@@ -37,6 +45,25 @@ class ProjectReview extends Component
         $this->project = $project;
         $this->wakilId = (string) ($project->wakil_id ?? '');
         $this->wakalahRoles = $project->currentWakalahAppointments()->whereNotNull('wakalah_role')->pluck('wakalah_role')->map(fn ($r) => $r->value)->values()->all();
+        $first = $project->currentWakalahAppointments()->first();
+        $this->muwakkil = (string) ($first?->muwakkil ?? '');
+        $this->wakalahScope = (string) ($first?->scope ?? '');
+        $this->wakalahAuthority = $project->currentWakalahAppointments()->get()->flatMap(fn ($a) => $a->authority ?? [])->unique()->values()->all();
+    }
+
+    /** Appointment-level Shariah review of one Wakalah appointment (approve / reject / request revision). */
+    public function reviewWakalah(int $id, string $decision): void
+    {
+        $this->reset('error');
+        abort_unless(auth()->user()->can('shariah.review'), 403);
+        try {
+            $a = \App\Models\WakalahAppointment::where('project_id', $this->project->id)->findOrFail($id);
+            app(\App\Services\Wakalah\WakalahService::class)->review($a, auth()->user(), \App\Enums\ShariahReviewStatus::from($decision), trim($this->wakalahNotes) ?: null);
+            $this->notice = 'Wakalah review recorded.';
+            $this->reset('wakalahNotes');
+        } catch (FinancialException $e) {
+            $this->error = $e->getMessage();
+        }
     }
 
     /** Staff appoint / change / remove the Wakil while the project has not been published; the service re-checks everything. */
@@ -47,6 +74,7 @@ class ProjectReview extends Component
         try {
             $this->project = app(\App\Services\Wakalah\WakalahService::class)->assign(
                 $this->project, filled($this->wakilId) ? (int) $this->wakilId : null, $this->wakalahRoles, auth()->user(), trim($this->wakalahReason) ?: null,
+                ['muwakkil' => $this->muwakkil, 'scope' => $this->wakalahScope, 'authority' => $this->wakalahAuthority],
             );
             $this->notice = 'Wakalah appointment updated.';
             $this->reset('wakalahReason');

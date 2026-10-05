@@ -173,18 +173,28 @@ function murabahaFixture(): array
  */
 function realProject(\App\Enums\ContractType $type = \App\Enums\ContractType::Mudarabah, array $overrides = []): \App\Models\Project
 {
+    $publish = $overrides['_publish'] ?? true;   // false leaves the project APPROVED (Shariah-reviewed) but unpublished
+    unset($overrides['_publish']);
     $business = makeBusiness();
     $admin = \App\Models\User::factory()->create();
     $base = ['title' => 'Real '.$type->label().' '.uniqid(), 'description' => 'Real workflow project', 'industry' => 'Trade', 'purpose' => 'Grow', 'duration_months' => 12, 'risk_level' => 'MEDIUM', 'minimum_amount' => '5000', 'key_risks' => 'Demand'];
-    $terms = $type === \App\Enums\ContractType::Mudarabah
-        ? ['contract_type' => 'MUDARABAH', 'capital_required' => '100000', 'investor_profit' => '70', 'business_profit' => '30']
-        : ['contract_type' => 'MUSHARAKAH', 'total_capital' => '1000000', 'investor_contribution' => '700000', 'business_contribution' => '300000', 'investor_profit' => '70', 'business_profit' => '30'];
+    $terms = match ($type) {
+        \App\Enums\ContractType::Mudarabah => ['contract_type' => 'MUDARABAH', 'capital_required' => '100000', 'investor_profit' => '70', 'business_profit' => '30'],
+        \App\Enums\ContractType::Musharakah => ['contract_type' => 'MUSHARAKAH', 'total_capital' => '1000000', 'investor_contribution' => '700000', 'business_contribution' => '300000', 'investor_profit' => '70', 'business_profit' => '30'],
+        \App\Enums\ContractType::Murabaha => ['contract_type' => 'MURABAHA', 'asset_name' => 'Cold room', 'supplier' => 'Supplier Ltd', 'quantity' => 2, 'unit_cost' => '50000', 'sale_profit' => '10000', 'installments' => 4, 'delivery_terms' => 'Delivery to premises'],
+    };
     $project = app(\App\Services\Project\ProjectBuilder::class)->saveDraft($business, $overrides + $terms + $base);
     $wf = app(\App\Services\Project\ProjectWorkflow::class);
     $wf->submit($project, $business->user);
     $wf->approve($project->fresh(), $admin);
     $wf->recordShariahReview($project->fresh(), $admin, \App\Enums\ShariahReviewStatus::Approved, 'Structure reviewed');
-    $wf->publish($project->fresh(), $admin);
+    if ($publish) {
+        // A proposed Wakalah is never effective by itself: the Wakil accepts and a reviewer reviews it before publication.
+        foreach ($project->fresh()->currentWakalahAppointments()->get() as $a) {
+            confirmWakalah($a, $a->wakil);
+        }
+        $wf->publish($project->fresh(), $admin);
+    }
 
     return $project->fresh()->load('contract');
 }
@@ -226,6 +236,14 @@ function makeWakil(string $name = 'Rahim Enterprise', array $o = []): \App\Model
 }
 
 /** Valid Mudarabah wizard input; pass overrides (e.g. wakil_id) to extend it. */
+/** Wakalah terms for a Murabaha project: explicit principal, scope and authority. */
+function wakalahTerms(array $roles = ['PURCHASE'], array $over = []): array
+{
+    $acts = collect($roles)->flatMap(fn ($r) => array_keys(\App\Enums\WakalahRole::from($r)->acts()))->all();
+
+    return $over + ['wakalah_roles' => $roles, 'muwakkil' => 'BUSINESS', 'wakalah_scope' => 'Purchase and take delivery of the cold room units described in the request, from the named supplier only.', 'wakalah_authority' => $acts];
+}
+
 function wakilFormData(array $over = []): array
 {
     return $over + ['title' => 'Wakil Project '.uniqid(), 'description' => 'A real business activity for the Wakalah tests.', 'industry' => 'Trade', 'purpose' => 'Grow', 'duration_months' => 12, 'risk_level' => 'MEDIUM', 'minimum_amount' => '5000', 'key_risks' => 'Demand',
@@ -235,4 +253,17 @@ function wakilFormData(array $over = []): array
 function murabahaFormData(array $over = []): array
 {
     return $over + wakilFormData(['contract_type' => 'MURABAHA']) + ['asset_name' => 'Cold room', 'supplier' => 'Supplier Ltd', 'quantity' => 2, 'unit_cost' => '50000', 'sale_profit' => '10000', 'installments' => 4, 'delivery_terms' => 'Delivery to premises'];
+}
+
+/** Walks one Wakalah appointment through the Wakil's acceptance and the appointment-level Shariah review. */
+function confirmWakalah(\App\Models\WakalahAppointment $a, \App\Models\User $wakil): \App\Models\WakalahAppointment
+{
+    seedRoles();
+    $reviewer = \App\Models\User::factory()->create();
+    $reviewer->givePermissionTo('shariah.review');
+    $svc = app(\App\Services\Wakalah\WakalahService::class);
+    $svc->accept($a->fresh(), $wakil);
+    $svc->review($a->fresh(), $reviewer, \App\Enums\ShariahReviewStatus::Approved, 'Scope and principal reviewed.');
+
+    return $a->fresh();
 }
