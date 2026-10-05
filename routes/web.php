@@ -28,6 +28,11 @@ Route::get('/documents/{document}', \App\Http\Controllers\DocumentController::cl
     ->middleware(['auth', 'verified', 'throttle:60,1'])->name('documents.show');
 
 /* ------------------------------- Investor portal ------------------------------ */
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/agreements/{document:reference}', \App\Livewire\Agreements\Show::class)->name('agreements.show');
+    Route::get('/agreements/{document:reference}/pdf', \App\Http\Controllers\AgreementPdfController::class)->name('agreements.pdf');
+});
+
 Route::prefix('investor')->name('investor.')->middleware(['auth', 'verified', 'role:INVESTOR'])->group(function () {
     Route::get('/', \App\Livewire\Investor\Dashboard::class)->name('dashboard');
     Route::view('/profile', 'portal.profile', ['portal' => 'investor'])->name('profile');

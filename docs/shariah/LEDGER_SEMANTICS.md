@@ -21,3 +21,6 @@ The ledger is one double-entry book. These are **bookkeeping accounts for the pl
 | `PlatformFees` | credit | Fees (unused) | Platform | — | — | — |
 
 Transaction types are documented in `app/Enums/TransactionType::semantics()` (business event, Shariah meaning, debit, credit, owner, evidence, lifecycle) and enforced by a test that every case has an entry.
+
+## Reconciliation of the Aqd layer (`php artisan finance:reconcile [--strict]`)
+`Aqd Document Integrity` (hashes, signatures bound to the document hash, executed ⇒ all required signatures, one live executed master per contract, superseded ⇒ executed successor), `Aqd Shariah Activation` (funding/active/completed projects have an executed master whose terms are the terms the reviewer approved; platform role outside the sandbox), `Aqd Term Integrity` (agreement terms equal the contract terms the books use), `Investor Contract Linkage` (each investment backed by one executed participation of the same investor/project/amount), `Wakalah Integrity`, `Murabaha Sequence`. Output names record ids only. Broken invariants are errors (non-zero exit in both modes); LEGACY records are warnings that fail only under `--strict`.

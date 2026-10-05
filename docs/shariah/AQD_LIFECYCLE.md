@@ -13,14 +13,16 @@ Aqd chosen → Terms entered (Shariah-aware validation) → Submitted
   → Ledger posting
 ```
 
-## Financial activation gate (all must hold, checked inside the locked transaction)
-1. Investor KYC approved; project approved and in FUNDING.
-2. Contract APPROVED; latest Shariah review APPROVED for the same aqd type and template version.
-3. No live Wakalah appointment that is not CONFIRMED (and none required by the aqd that is missing).
+## Financial activation gate (checked inside the locked investment transaction — `AqdGate`)
+1. Investor KYC approved; project approved and in FUNDING; contract APPROVED.
+2. Latest Shariah review APPROVED, and the executed master agreement is the exact text (`terms_hash`) that was approved.
+3. No live Wakalah appointment that is not CONFIRMED.
 4. Master agreement EXECUTED (business signed) with a stored hash that recomputes.
-5. Participation agreement for this investor and amount EXECUTED, hash intact, not already consumed.
-6. Platform role configured (sandbox mode excepted and then labelled).
+5. An EXECUTED participation agreement of this investor for exactly this project and amount, hash intact, not already consumed — consumed atomically by the investment.
+6. Platform role approved (`shariah.platform_role` not `UNSET`); the sandbox (`finance.sandbox`, default on outside production) is the only exemption.
 7. Idempotency key unused (or same request hash).
+
+Murabaha is not an investment product and never passes this gate.
 
 Selecting an aqd, a Wakil, or any form field posts **no** ledger entry. Only financial events do.
 

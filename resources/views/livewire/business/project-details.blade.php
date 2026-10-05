@@ -21,6 +21,10 @@
             @else<div><dt class="text-ink-500">Purchase cost</dt><dd class="font-medium">{{ Money::minor($t->purchase_cost)->format() }}</dd></div><div><dt class="text-ink-500">Murabaha sale profit</dt><dd class="font-medium">{{ Money::minor($t->sale_profit)->format() }}</dd></div><div><dt class="text-ink-500">Sale price</dt><dd class="font-medium">{{ Money::minor($t->sale_price)->format() }}</dd></div><div><dt class="text-ink-500">Installments</dt><dd class="font-medium">{{ $t->installments_count }}</dd></div>@endif
             </dl></x-ui.card>@endif
 
+        @php $agreementDocs = \App\Models\ContractDocument::where('project_id', $p->id)->where('status', '!=', 'CANCELLED')->where('kind', '!=', 'PARTICIPATION')->orderBy('id')->get(); @endphp
+        <x-ui.card title="Agreements" subtitle="Generated from the approved terms. The business signs the master agreement after the Shariah review approves it. Subject to qualified Shariah review.">
+            @forelse($agreementDocs as $d)<p class="border-b border-ink-100 py-2 text-sm last:border-0"><a class="text-brand-700 underline" href="{{ route('agreements.show', $d->reference) }}">{{ $d->kind->label() }} {{ $d->reference }}</a> · v{{ $d->version_no }} · {{ $d->status->label() }}</p>@empty<p class="text-sm text-ink-500">No agreement has been generated yet. It is generated when the project is submitted for review.</p>@endforelse
+        </x-ui.card>
         <x-ui.card title="Documents">@forelse($p->documents as $d)<div class="flex items-center justify-between border-b border-ink-100 py-2 text-sm last:border-0"><span>{{ $d->title }} <span class="text-ink-500">· {{ $d->category->label() }}</span></span><span class="flex items-center gap-2"><x-status-badge :status="$d->verification_status" /><a class="btn-secondary btn-sm" href="{{ route('documents.show', $d) }}">Download</a></span></div>@empty<p class="text-sm text-ink-500">No documents attached.</p>@endforelse</x-ui.card>
     </div>
     <aside class="space-y-4 lg:self-start">

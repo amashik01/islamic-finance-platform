@@ -33,6 +33,13 @@
                 </div>
             </x-ui.card>
 
+            @php $agreements = \App\Models\ContractDocument::whereIn('id', array_filter([$i->participation_document_id]))->get()->concat(\App\Models\ContractDocument::where('contract_id', $c?->id)->where('kind', 'MASTER_AQD')->where('status', 'EXECUTED')->get()); @endphp
+            @if($agreements->isNotEmpty())
+                <x-ui.card title="Your agreements" subtitle="The signed documents behind this investment. Each is bound to its SHA-256 hash.">
+                    @foreach($agreements as $d)<p class="text-sm"><a class="text-brand-700 underline" href="{{ route('agreements.show', $d->reference) }}">{{ $d->kind->label() }} {{ $d->reference }}</a> · {{ $d->status->label() }}</p>@endforeach
+                </x-ui.card>
+            @endif
+
             <x-ui.card title="Contract terms">
                 <dl class="grid gap-3 text-sm sm:grid-cols-2">
                     <div><dt class="text-ink-500">Contract number</dt><dd class="font-medium">{{ $c?->contract_number ?? 'Issued when funding completes' }}</dd></div>

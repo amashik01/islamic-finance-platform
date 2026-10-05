@@ -175,6 +175,10 @@ class WakalahService
             $decision === ShariahReviewStatus::Rejected && $this->dropProjectWakilIfNone($a->project);
             $this->audit->record('wakalah.shariah_reviewed', $a->project, ['status' => 'PENDING_SHARIAH_REVIEW'], ['status' => $a->status->value, 'slot' => $a->slot, 'decision' => $decision->value], $notes);
             $a->status === W::Confirmed && $this->audit->record('wakalah.confirmed', $a->project, null, ['slot' => $a->slot, 'wakil_id' => $a->wakil_id, 'reviewer_id' => $reviewer->id], $notes);
+            // The confirmed appointment is also issued as a Wakalah document for the Wakil and the Muwakkil to sign (LEGACY projects have none).
+            if ($a->status === W::Confirmed && $a->project->contract?->aqd_form_version !== null) {
+                app(\App\Services\Aqd\ContractGenerator::class)->wakalah($a->fresh(), $reviewer);
+            }
 
             return $a;
         });

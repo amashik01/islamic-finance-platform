@@ -56,7 +56,15 @@ it('drives a Murabaha contract through every stage and payment from the UI', fun
         ->call('step', 'ownership')->assertSet('error', null)
         ->call('step', 'possession')->assertSet('error', 'Describe how possession was taken.')
         ->set('notes', 'Inspected and held')->call('step', 'possession')->assertSet('error', null)
-        ->call('step', 'sale')->assertSet('error', null)->assertSee('Receivable and payments');
+        ->call('step', 'sale')->assertSet('error', fn ($e) => str_contains($e, 'risk'));
+    \App\Models\MurabahaPurchase::query()->update(["possession_on" => now()->subDays(10)]);
+    $c->set('notes', 'Insured warehouse')->call('step', 'risk')->assertSet('error', null)
+        ->call('step', 'sale')->assertSet('error', fn ($e) => str_contains($e, 'sale agreement'))
+        ->call('step', 'agreement')->assertSet('error', null);
+    $doc = \App\Models\ContractDocument::where('kind', 'MURABAHA_SALE')->firstOrFail();
+    signDoc($doc, $contract->project->business->user);
+    signDoc($doc->fresh(), auth()->user());
+    $c->call('step', 'sale')->assertSet('error', null)->assertSee('Receivable and payments');
     $c->set('payAmount', '55000')->call('recordPayment')->assertSet('error', null)
         ->set('payAmount', '55000')->call('recordPayment')->assertSet('error', null);
     expect($contract->fresh()->status)->toBe(ContractStatus::Completed);

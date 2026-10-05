@@ -26,7 +26,7 @@ use Illuminate\Support\Str;
 /** DEMO DATA ONLY. All parties and projects carry is_demo = true. Password for every demo user: "password". */
 class DemoDataSeeder extends Seeder
 {
-    public function run(WalletService $wallets, InvestmentService $investments, MurabahaSaleCalculator $murabaha, \App\Services\Murabaha\MurabahaService $workflow): void
+    public function run(WalletService $wallets, InvestmentService $investments, MurabahaSaleCalculator $murabaha, \App\Services\Murabaha\MurabahaService $workflow, \App\Services\Aqd\ContractSigningService $signing): void
     {
         $staff = [
             ['Demo Admin', 'admin@demo.test', UserRole::Admin],
@@ -65,15 +65,28 @@ class DemoDataSeeder extends Seeder
             $profile->forceFill(['kyc_status' => KycStatus::Approved, 'kyc_reviewed_at' => now()])->save();
         }
 
+        // Demo contract templates. The Shariah review recorded below belongs to a DEMO reviewer and is NOT a real review.
+        $reviewer = $this->user('Demo Shariah Reviewer (not a real review)', 'shariah@demo.test');
+        $reviewer->givePermissionTo('shariah.review');
+        $templates = app(\App\Services\Aqd\ContractTemplateService::class);
+        $templates->seed();
+        foreach (\App\Models\ContractTemplateVersion::where('shariah_review_status', 'PENDING')->get() as $v) {
+            $templates->review($v, $reviewer, \App\Enums\ShariahReviewStatus::Approved, 'DEMO ONLY — not a real Shariah review.');
+        }
+
         // 1) Mudarabah — capital 100,000; actual profit 20,000 at settlement; 70/30 ratio.
         $mud = $this->project($businesses[0], 'Poultry Farm Expansion (Demo)', ContractType::Mudarabah, 10000000, 500000, 12, RiskLevel::Medium, ProjectStatus::Funding);
         $mc = $this->contract($mud, ContractStatus::Approved, $admin);
         $mc->mudarabah()->create(['capital_required' => 10000000, 'investor_profit_bps' => 7000, 'business_profit_bps' => 3000, 'expected_revenue' => 18000000, 'expected_expenses' => 6000000, 'business_plan' => 'Expand to a second shed and cold storage.', 'loss_terms' => 'Loss of capital borne by the investor unless caused by manager negligence or breach.']);
 
+        $this->executeMaster($mud, $reviewer, $signing);
+
         // 2) Musharakah — investor 700,000 + business 300,000 = 1,000,000.
         $msk = $this->project($businesses[1], 'Textile Dyeing Unit (Demo)', ContractType::Musharakah, 70000000, 2000000, 18, RiskLevel::Medium, ProjectStatus::Funding);
         $kc = $this->contract($msk, ContractStatus::Approved, $admin);
         $kc->musharakah()->create(['total_capital' => 100000000, 'investor_contribution' => 70000000, 'business_contribution' => 30000000, 'investor_ownership_bps' => 7000, 'business_ownership_bps' => 3000, 'investor_profit_bps' => 6500, 'business_profit_bps' => 3500, 'loss_allocation_basis' => LossAllocationBasis::CapitalRatio, 'project_activity' => 'Install a new dyeing line and sell processed fabric.', 'financial_assumptions' => 'Based on 60% capacity utilisation in year one.']);
+
+        $this->executeMaster($msk, $reviewer, $signing);
 
         // 3) Murabaha — cost 100,000, sale profit 10,000, price 110,000 in 4 installments.
         //    Driven through the real service so purchase, sale and payments are all on the ledger.
@@ -82,17 +95,49 @@ class DemoDataSeeder extends Seeder
         $price = $murabaha->salePrice(Money::minor(10000000), Money::minor(1000000));
         $mt = $rc->murabaha()->create(['stage' => MurabahaStage::Requested, 'purchase_cost' => 10000000, 'sale_profit' => 1000000, 'sale_price' => $price->minor, 'installments_count' => 4, 'delivery_terms' => 'Delivered to buyer premises.', 'payment_terms' => '4 equal monthly installments.']);
         $mt->assets()->create(['name' => 'Commercial refrigeration units', 'supplier_name' => 'Chittagong Equipment Traders', 'quantity' => 4, 'unit_cost' => 2500000]);
+        $this->executeMaster($mrb, $reviewer, $signing);
         $workflow->verifySupplierAndAsset($mt, $admin);
         $workflow->recordPurchase($mt->fresh(), Money::minor(10000000), 'INV-DEMO-001', now()->subMonths(2), $admin);
         $workflow->recordOwnership($mt->fresh(), now()->subMonths(2), $admin);
         $workflow->recordPossession($mt->fresh(), now()->subMonths(2)->addDays(3), 'Assets inspected and held by the financier before sale.', $admin);
+        $workflow->confirmRiskBorne($mt->fresh(), now()->subMonths(2)->addDays(8), 'Held in the seller\'s insured warehouse (demo).', $admin);
+        $saleDoc = $workflow->prepareSaleAgreement($mt->fresh(), $admin);
+        $signing->sign($saleDoc, $businesses[2]->user, $businesses[2]->user->name, 'password', true);
+        $signing->sign($saleDoc->fresh(), $admin, $admin->name, 'password', true);
         $receivable = $workflow->executeSale($mt->fresh(), now()->subMonth(), now()->addDays(5), $admin);
         $workflow->recordPayment($receivable, Money::minor(2750000), 'demo-murabaha-pay-1', now()->subDays(2), $admin);
 
-        // A few demo investments through the real service (ledger-backed, idempotent).
-        $investments->invest($investors[0], $mud, Money::minor(3000000), 'demo-inv-1');
-        $investments->invest($investors[1], $mud, Money::minor(2000000), 'demo-inv-2');
-        $investments->invest($investors[2], $msk, Money::minor(5000000), 'demo-inv-3');
+        // A few demo investments through the real service (ledger-backed, idempotent). Each investor signs a participation agreement first.
+        foreach ([[$investors[0], $mud, 3000000, 'demo-inv-1'], [$investors[1], $mud, 2000000, 'demo-inv-2'], [$investors[2], $msk, 5000000, 'demo-inv-3']] as [$investor, $project, $amount, $key]) {
+            $doc = app(\App\Services\Aqd\ContractGenerator::class)->participation($project->fresh(), $investor, Money::minor($amount), $investor->user);
+            $signing->sign($doc, $investor->user, $investor->user->name, 'password', true);
+            $investments->invest($investor, $project->fresh(), Money::minor($amount), $key, $doc->fresh());
+        }
+    }
+
+    /** Contract-specific terms, a generated master agreement, a (demo) Shariah review and the business's signature. */
+    private function executeMaster(Project $project, User $reviewer, \App\Services\Aqd\ContractSigningService $signing): void
+    {
+        $contract = $project->contract;
+        $def = \App\Domain\Aqd\AqdRegistry::for($project->contract_type);
+        $terms = [];
+        foreach ($def->fieldMap() as $f) {
+            if (in_array($f['key'], $def->commonKeys(), true) || in_array($f['key'], $def->typedKeys(), true)) {
+                continue;
+            }
+            $terms[$f['key']] = match ($f['type']) {
+                'checkbox' => true, 'select' => $f['default'] ?? array_key_first($f['options']), 'date' => now()->addDays(30)->toDateString(), 'number' => 3, 'money' => '1000', 'percent' => '50',
+                default => 'Demo value for '.strtolower($f['label']).'.',
+            };
+        }
+        $terms['use_promise'] = false;
+        $contract->forceFill(['aqd_terms' => $terms, 'aqd_form_version' => $def->version()])->save();
+        $workflow = app(\App\Services\Project\ProjectWorkflow::class);
+        app(\App\Services\Aqd\ContractGenerator::class)->master($project->fresh(), $reviewer);
+        $workflow->recordShariahReview($project->fresh(), $reviewer, \App\Enums\ShariahReviewStatus::Approved, 'DEMO ONLY — not a real Shariah review.');
+        $doc = \App\Models\ContractDocument::where('contract_id', $contract->id)->where('kind', 'MASTER_AQD')->where('status', 'PENDING_SIGNATURE')->latest('id')->firstOrFail();
+        $owner = $project->business->user;
+        $signing->sign($doc, $owner, $owner->name, 'password', true);
     }
 
     private function user(string $name, string $email): User

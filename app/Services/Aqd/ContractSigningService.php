@@ -110,6 +110,7 @@ class ContractSigningService
                 $d->forceFill(['status' => S::Executed, 'executed_at' => now()])->save();
                 $d->supersedes?->forceFill(['status' => S::Superseded])->save();
                 $this->audit->record('aqd.executed', $d->project, null, ['reference' => $d->reference, 'kind' => $d->kind->value, 'document_hash' => $d->document_hash]);
+                \App\Models\ContractAmendment::where('to_document_id', $d->id)->where('status', 'APPROVED')->update(['status' => 'EXECUTED']);
                 $d->supersedes && $this->audit->record('aqd.superseded', $d->project, ['reference' => $d->supersedes->reference], ['by' => $d->reference]);
             }
 

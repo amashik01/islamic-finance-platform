@@ -29,6 +29,7 @@ function healthyBook(): array
     $svc->recordPurchase($m->fresh(), Money::minor(10000000), 'INV', now(), $admin);
     $svc->recordOwnership($m->fresh(), now(), $admin);
     $svc->recordPossession($m->fresh(), now(), 'held', $admin);
+    readyToSell($m->fresh());
     $receivable = $svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin);
     $svc->recordPayment($receivable, Money::minor(2750000), 'rc-pay', now());
 

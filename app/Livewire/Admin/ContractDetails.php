@@ -53,6 +53,12 @@ class ContractDetails extends Component
 
     public string $deliveryReference = '';
 
+    public string $qabdType = 'ACTUAL';
+
+    public string $promiseType = 'UNILATERAL';
+
+    public string $optionHolder = '';
+
     public ?string $error = null;
 
     public ?string $notice = null;
@@ -172,7 +178,10 @@ class ContractDetails extends Component
                 'verify' => $svc->verifySupplierAndAsset($m, $by),
                 'purchase' => $svc->recordPurchase($m, Money::minor($m->purchase_cost), $this->invoice ?: throw new FinancialException('Enter the supplier invoice reference.'), $on, $by),
                 'ownership' => $svc->recordOwnership($m, $on, $by),
-                'possession' => $svc->recordPossession($m, $on, $this->notes ?: throw new FinancialException('Describe how possession was taken.'), $by),
+                'possession' => $svc->recordPossession($m, $on, $this->notes ?: throw new FinancialException('Describe how possession was taken.'), $by, $this->qabdType),
+                'risk' => $svc->confirmRiskBorne($m, $on, $this->notes ?: throw new FinancialException('Describe how the seller bore the risk of the asset.'), $by),
+                'agreement' => $svc->prepareSaleAgreement($m, $by),
+                'promise' => $svc->recordPromise($m, $this->promiseType, 'BUSINESS', $this->optionHolder ?: null, $this->notes ?: null, $by),
                 'sale' => $svc->executeSale($m, $on, Carbon::parse($this->firstDue), $by),
             };
             $this->notice = 'Step recorded.';

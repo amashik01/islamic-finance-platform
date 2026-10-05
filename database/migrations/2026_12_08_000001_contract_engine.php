@@ -119,7 +119,7 @@ return new class extends Migration
             $t->string('reviewed_terms_hash', 64)->nullable();
             $t->unsignedInteger('review_version')->default(1);
             $t->text('conditions')->nullable();
-            $t->string('scope', 60)->nullable();              // what exactly was reviewed, e.g. "project terms + MUDARABAH-MASTER v1"
+            $t->string('scope', 255)->nullable();              // what exactly was reviewed, e.g. "project terms + MUDARABAH-MASTER v1"
         });
 
         Schema::table('investments', function (Blueprint $t) {

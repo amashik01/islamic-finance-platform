@@ -20,6 +20,19 @@ beforeEach(function () {
 /** @param list<array{0:string, 1:list<string>}> $jobs */
 function race(array $jobs): array
 {
+    // Each distinct investment attempt needs its own executed participation agreement (signed before the race).
+    $seen = [];
+    foreach ($jobs as $args) {
+        if ($args[0] !== 'invest' || isset($seen[$args[3]])) {
+            continue;
+        }
+        $seen[$args[3]] = true;
+        try {
+            signedParticipation(\App\Models\Investor::findOrFail($args[1]), \App\Models\Project::findOrFail($args[4]), \App\Support\Money\Money::parse($args[2])->minor);
+        } catch (\App\Exceptions\FinancialException) {
+            // The attempt is meant to be refused (closed or full project): the probe then reports the real refusal.
+        }
+    }
     $procs = array_map(function ($args) {
         $p = new Process(['php', base_path('artisan'), 'finance:probe', ...$args], base_path(), null, null, 120);
         $p->start();

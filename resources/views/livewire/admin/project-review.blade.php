@@ -53,6 +53,10 @@
             @endif
         </x-ui.card>
 
+        @php $agreementDocs = \App\Models\ContractDocument::where('project_id', $p->id)->where('status', '!=', 'CANCELLED')->orderBy('id')->get(); @endphp
+        <x-ui.card title="Agreements" subtitle="Generated from the approved terms. The business signs the master agreement after the Shariah review approves it. Subject to qualified Shariah review.">
+            @forelse($agreementDocs as $d)<p class="border-b border-ink-100 py-2 text-sm last:border-0"><a class="text-brand-700 underline" href="{{ route('agreements.show', $d->reference) }}">{{ $d->kind->label() }} {{ $d->reference }}</a> · v{{ $d->version_no }} · {{ $d->status->label() }}</p>@empty<p class="text-sm text-ink-500">No agreement has been generated yet. It is generated when the project is submitted for review.</p>@endforelse
+        </x-ui.card>
         <x-ui.card title="Financial information">
             <dl class="grid gap-3 text-sm sm:grid-cols-2">
                 <div><dt class="text-ink-500">Funding target</dt><dd class="font-medium">{{ $p->fundingTarget()->format() }}</dd></div>

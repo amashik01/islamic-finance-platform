@@ -12,7 +12,12 @@ use App\Enums\SettlementItemType as Item;
 use App\Enums\SettlementStatus;
 use App\Enums\TransactionType;
 use App\Exceptions\FinancialException;
+use App\Enums\ContractDocumentKind;
+use App\Enums\ContractDocumentStatus;
+use App\Enums\WakalahRole;
 use App\Models\Contract;
+use App\Models\ContractDocument;
+use App\Models\MurabahaPromise;
 use App\Models\MurabahaContract;
 use App\Models\Payment;
 use App\Models\PaymentSchedule;
@@ -21,7 +26,9 @@ use App\Models\Settlement;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Finance\IdempotencyGuard;
+use App\Services\Aqd\ContractGenerator;
 use App\Services\Finance\MurabahaSaleCalculator;
+use App\Services\Wakalah\WakalahService;
 use App\Services\Ledger\LedgerService;
 use App\Support\Money\Currency;
 use App\Support\Money\Money;
@@ -38,7 +45,74 @@ class MurabahaService
 {
     private const ORDER = [Stage::Requested, Stage::Verified, Stage::Purchased, Stage::Owned, Stage::Possessed, Stage::Sold, Stage::Settled];
 
-    public function __construct(private LedgerService $ledger, private MurabahaSaleCalculator $calc, private AuditLogger $audit) {}
+    public function __construct(private LedgerService $ledger, private MurabahaSaleCalculator $calc, private AuditLogger $audit, private WakalahService $wakalah, private ContractGenerator $generator) {}
+
+    /** A Wakil may perform only the acts its confirmed Wakalah grants; staff acting for the platform are not Wakils. */
+    private function assertAuthority(MurabahaContract $m, User $by, WakalahRole $role, string $act): ?User
+    {
+        if (! $by->isWakil()) {
+            return null;
+        }
+        $this->wakalah->assertMayAct($m->contract->project, $by, $role, $act);
+
+        return $by;
+    }
+
+    /**
+     * Records the promise (wa'd) that preceded the sale. A promise is not the sale: it creates no receivable and no price obligation.
+     * A mutual promise is accepted only with an option for one or both parties (rule MUR-PROMISE).
+     */
+    public function recordPromise(MurabahaContract $m, string $type, string $promisor, ?string $optionHolder, ?string $conditions, User $by): MurabahaPromise
+    {
+        if (! in_array($type, ['UNILATERAL', 'BILATERAL_WITH_OPTION'], true)) {
+            throw new FinancialException('A mutual promise without an option is not supported; choose a unilateral promise or a mutual promise with an option.');
+        }
+        if ($type === 'BILATERAL_WITH_OPTION' && blank($optionHolder)) {
+            throw new FinancialException('A mutual promise needs an option for one or both parties.');
+        }
+        if (! in_array($m->stage, [Stage::Requested, Stage::Verified], true)) {
+            throw new FinancialException('The promise is recorded before the asset is purchased.');
+        }
+        if ($m->promise()->exists()) {
+            throw new FinancialException('A promise is already recorded for this contract.');
+        }
+        $promise = $m->promise()->create(['promise_type' => $type, 'promisor' => $promisor, 'option_holder' => $optionHolder, 'conditions' => $conditions, 'recorded_by' => $by->id, 'recorded_at' => now()]);
+        $this->audit->record('murabaha.promise_recorded', $m->contract, null, ['type' => $type, 'promisor' => $promisor]);
+
+        return $promise;
+    }
+
+    /**
+     * The seller confirms it has borne the risk of the asset since acquiring it, for at least the agreed period before the sale.
+     * The minimum period is a policy choice REQUIRING QUALIFIED SHARIAH REVIEW.
+     */
+    public function confirmRiskBorne(MurabahaContract $m, Carbon $on, string $notes, User $by): MurabahaContract
+    {
+        $p = $m->purchase;
+        if ($m->stage !== Stage::Possessed || ! $p?->possession_on) {
+            throw new FinancialException('The asset must be in possession before the seller\'s risk can be confirmed.');
+        }
+        if (trim($notes) === '') {
+            throw new FinancialException('Describe how the seller bore the risk of the asset (insurance, storage, custody).');
+        }
+        if ($on->copy()->startOfDay()->isFuture()) {
+            throw new FinancialException('The risk confirmation date cannot be in the future.');
+        }
+        $days = (int) (($m->contract->aqd_terms ?? [])['risk_bearing_days'] ?? 0);
+        if ($on->copy()->startOfDay()->diffInDays($p->possession_on->copy()->startOfDay(), false) > -$days) {
+            throw new FinancialException("The seller must bear the asset's risk for at least {$days} day(s) after taking possession before the sale.");
+        }
+        $p->forceFill(['risk_confirmed_on' => $on, 'risk_confirmed_by' => $by->id, 'risk_notes' => $notes])->save();
+        $this->audit->record('murabaha.risk_confirmed', $m->contract, null, ['on' => $on->toDateString()]);
+
+        return $m;
+    }
+
+    /** Prepares the sale agreement for signature (after possession and risk confirmation). */
+    public function prepareSaleAgreement(MurabahaContract $m, User $by): ContractDocument
+    {
+        return $this->generator->murabahaSale($m, $by);
+    }
 
     public function verifySupplierAndAsset(MurabahaContract $m, User $by): MurabahaContract
     {
@@ -55,9 +129,17 @@ class MurabahaService
             throw new FinancialException('The purchase amount must equal the approved purchase cost.');
         }
         Currency::require($m->contract->currency, 'The contract');
+        $acting = $this->assertAuthority($m, $by, WakalahRole::Purchase, 'pay_supplier');
+        // The asset is bought only under an executed, Shariah-reviewed master agreement (pre-engine contracts are LEGACY and exempt).
+        if ($m->contract->aqd_form_version !== null && ! ContractDocument::where('contract_id', $m->contract_id)->where('kind', ContractDocumentKind::MasterAqd->value)->where('status', ContractDocumentStatus::Executed->value)->exists()) {
+            throw new FinancialException('The Murabaha master agreement has not been executed; the asset cannot be purchased yet.');
+        }
+        if (($m->contract->aqd_terms['use_promise'] ?? false) && ! $m->promise()->exists()) {
+            throw new FinancialException('The promise (wa\'d) used by this contract has not been recorded.');
+        }
 
-        return DB::transaction(function () use ($m, $amount, $invoiceReference, $on, $by) {
-            $m->purchase()->updateOrCreate([], ['amount' => $amount->minor, 'purchased_on' => $on, 'invoice_reference' => $invoiceReference]);
+        return DB::transaction(function () use ($m, $amount, $invoiceReference, $on, $by, $acting) {
+            $m->purchase()->updateOrCreate([], ['amount' => $amount->minor, 'purchased_on' => $on, 'invoice_reference' => $invoiceReference, 'acting_wakil_id' => $acting?->id]);
             // Asset acquisition: cash leaves, an owned asset (inventory) appears at cost.
             $this->ledger->post(TransactionType::MurabahaPurchase, [
                 ['account' => $this->ledger->systemAccount(A::MurabahaInventory, Currency::CODE, $m->contract->project_id), 'direction' => D::Debit, 'amount' => $amount],
@@ -70,14 +152,19 @@ class MurabahaService
 
     public function recordOwnership(MurabahaContract $m, Carbon $on, User $by): MurabahaContract
     {
+        $this->assertAuthority($m, $by, WakalahRole::AssetAcquisition, 'record_title');
         $m->purchase()->firstOrFail()->update(['ownership_acquired_on' => $on]);
 
         return $this->advance($m, Stage::Owned, $by);
     }
 
-    public function recordPossession(MurabahaContract $m, Carbon $on, string $notes, User $by): MurabahaContract
+    public function recordPossession(MurabahaContract $m, Carbon $on, string $notes, User $by, string $qabdType = 'ACTUAL'): MurabahaContract
     {
-        $m->purchase()->firstOrFail()->update(['possession_on' => $on, 'possession_notes' => $notes]);
+        $this->assertAuthority($m, $by, WakalahRole::DeliveryQabd, 'take_delivery');
+        if (! in_array($qabdType, ['ACTUAL', 'CONSTRUCTIVE'], true)) {
+            throw new FinancialException('Possession is either actual or constructive.');
+        }
+        $m->purchase()->firstOrFail()->update(['possession_on' => $on, 'possession_notes' => $notes, 'qabd_type' => $qabdType]);
 
         return $this->advance($m, Stage::Possessed, $by);
     }
@@ -91,6 +178,16 @@ class MurabahaService
             if ($m->stage !== Stage::Possessed || ! $purchase?->possession_on || ! $purchase->ownership_acquired_on) {
                 throw new FinancialException('The asset must be owned and in possession before it can be sold.');
             }
+            if (! $purchase->risk_confirmed_on) {
+                throw new FinancialException('The seller\'s risk of the asset has not been confirmed; the sale cannot be executed.');
+            }
+            if (($m->contract->aqd_terms['use_promise'] ?? false) && ! $m->promise()->exists()) {
+                throw new FinancialException('The promise (wa\'d) used by this contract has not been recorded.');
+            }
+            $saleDoc = ContractDocument::where('contract_id', $m->contract_id)->where('kind', ContractDocumentKind::MurabahaSale->value)->where('status', ContractDocumentStatus::Executed->value)->latest('id')->first();
+            if (! $saleDoc || ! $saleDoc->hashIntact()) {
+                throw new FinancialException('The Murabaha sale agreement has not been executed by both parties; no sale or receivable can be created before it is.');
+            }
             Currency::require($m->contract->currency, 'The contract');
             Currency::require($m->contract->project->currency, 'The project');
             $price = $this->calc->salePrice(Money::minor($m->purchase_cost), Money::minor($m->sale_profit));
@@ -98,7 +195,7 @@ class MurabahaService
                 throw new FinancialException('The sale price does not match cost plus sale profit.');
             }
 
-            $sale = $m->sale()->create(['purchase_cost' => $m->purchase_cost, 'sale_profit' => $m->sale_profit, 'sale_price' => $price->minor, 'sold_on' => $soldOn]);
+            $sale = $m->sale()->create(['sale_document_id' => $saleDoc->id, 'purchase_cost' => $m->purchase_cost, 'sale_profit' => $m->sale_profit, 'sale_price' => $price->minor, 'sold_on' => $soldOn]);
             $receivable = $sale->receivable()->forceCreate(['murabaha_sale_id' => $sale->id, 'business_id' => $m->contract->project->business_id, 'total_amount' => $price->minor, 'status' => PaymentStatus::Scheduled]);
             foreach ($this->calc->installments($price, $m->installments_count) as $n => $amount) {
                 $receivable->schedules()->forceCreate(['receivable_id' => $receivable->id, 'sequence' => $n + 1, 'due_date' => $firstDueDate->copy()->addMonths($n)->toDateString(), 'amount' => $amount->minor, 'status' => PaymentStatus::Scheduled]);

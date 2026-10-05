@@ -87,6 +87,7 @@ it('murabaha payments: same key + same request is safe; different amount is reje
     $svc->recordPurchase($m->fresh(), Money::minor(10000000), 'INV', now(), $admin);
     $svc->recordOwnership($m->fresh(), now(), $admin);
     $svc->recordPossession($m->fresh(), now(), 'held', $admin);
+    readyToSell($m->fresh());
     $r = $svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin);
 
     $p = $svc->recordPayment($r, Money::minor(2750000), 'pay-key', now());

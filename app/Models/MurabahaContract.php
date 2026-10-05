@@ -31,6 +31,11 @@ class MurabahaContract extends Model
         return $this->hasOne(MurabahaPurchase::class);
     }
 
+    public function promise(): HasOne
+    {
+        return $this->hasOne(MurabahaPromise::class);
+    }
+
     public function sale(): HasOne
     {
         return $this->hasOne(MurabahaSale::class);

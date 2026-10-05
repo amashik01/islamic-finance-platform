@@ -95,6 +95,39 @@ class ContractGenerator
         });
     }
 
+    /* ------------------------------------------------------------------ the Murabaha sale agreement */
+
+    /** The sale agreement is generated only after the asset is acquired, owned, in possession and the seller's risk is confirmed. */
+    public function murabahaSale(\App\Models\MurabahaContract $m, ?User $by = null): ContractDocument
+    {
+        return DB::transaction(function () use ($m, $by) {
+            $contract = $m->contract;
+            $project = Project::whereKey($contract->project_id)->lockForUpdate()->firstOrFail();
+            $p = $m->purchase;
+            if (! $p || ! $p->possession_on || ! $p->ownership_acquired_on) {
+                throw new FinancialException('The asset must be owned and in possession before the sale agreement can be prepared.');
+            }
+            if (! $p->risk_confirmed_on) {
+                throw new FinancialException('Confirm that the seller has borne the risk of the asset before the sale agreement is prepared.');
+            }
+            $asset = $m->assets()->first();
+            $version = $this->templates->usableVersion('MURABAHA-SALE');
+            $terms = $contract->aqd_terms ?? [];
+            $money = fn (int $minor) => Money::minor($minor)->format();
+            $data = $this->commonData($project, $contract) + [
+                'seller_name' => $this->settings->get('platform.name').' (selling on its own account)', 'supplier' => (string) $asset?->supplier_name, 'invoice_reference' => (string) $p->invoice_reference,
+                'purchased_on' => $p->purchased_on?->toDateString(), 'acquisition_cost' => $money($m->purchase_cost), 'ownership_on' => $p->ownership_acquired_on->toDateString(),
+                'qabd_type_label' => $p->qabd_type === 'CONSTRUCTIVE' ? 'constructive possession' : 'actual possession', 'possession_on' => $p->possession_on->toDateString(),
+                'risk_period_days' => (string) ($terms['risk_bearing_days'] ?? '—'), 'asset_name' => (string) $asset?->name, 'asset_description' => (string) ($terms['asset_description'] ?? $asset?->name),
+                'quantity' => (string) $asset?->quantity, 'sale_profit' => $money($m->sale_profit), 'sale_price' => $money($m->sale_price), 'installments' => (string) $m->installments_count,
+                'payment_terms' => (string) ($terms['payment_terms'] ?? '—'), 'delivery_terms' => (string) ($terms['delivery_terms'] ?? '—'), 'sale_date' => now()->toDateString(),
+            ];
+            $review = ShariahReview::query()->where('project_id', $project->id)->latest('id')->first();
+
+            return $this->make(K::MurabahaSale, $project, $contract, $version, $data, $review, null, $m->sale_price, $by, null);
+        });
+    }
+
     /* ------------------------------------------------------------------ a Wakalah appointment */
 
     public function wakalah(WakalahAppointment $a, ?User $by = null): ContractDocument
@@ -123,7 +156,8 @@ class ContractGenerator
     public function make(K $kind, Project $project, Contract $contract, ContractTemplateVersion $version, array $data, ?ShariahReview $review, ?int $partyUserId, ?int $amount, ?User $by, ?WakalahAppointment $appointment): ContractDocument
     {
         $scope = ContractDocument::where('contract_id', $contract->id)->where('kind', $kind->value)->where('party_user_id', $partyUserId)->where('wakalah_appointment_id', $appointment?->id);
-        $versionNo = 1 + (int) (clone $scope)->max('version_no');
+        // A version number counts executed (or superseded) agreements; drafts that were regenerated before execution do not consume one.
+        $versionNo = 1 + (int) (clone $scope)->whereIn('status', [S::Executed->value, S::Superseded->value])->max('version_no');
         $reference = 'AQD-'.strtoupper(Str::random(8));
         $data += ['reference' => $reference, 'document_version' => (string) $versionNo, 'template_code' => $version->template->code, 'template_version' => (string) $version->version, 'doc_date' => now()->toDateString()];
 

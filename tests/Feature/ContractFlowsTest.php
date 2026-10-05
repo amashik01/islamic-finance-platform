@@ -117,8 +117,9 @@ function murabahaContract(): array
     $contract->forceFill(['status' => ContractStatus::Approved])->save();
     $m = $contract->murabaha;
     $m->assets()->create(['name' => 'Refrigeration units', 'supplier_name' => 'Supplier Ltd', 'quantity' => 4, 'unit_cost' => 2500000]);
+    prepareFixtureProject($project);
 
-    return [$contract, $m, User::factory()->create()];
+    return [$contract->fresh(), $m, User::factory()->create()];
 }
 
 it('murabaha: steps must follow request -> verify -> purchase -> own -> possess -> sell', function () {
@@ -132,6 +133,7 @@ it('murabaha: steps must follow request -> verify -> purchase -> own -> possess 
     $svc->recordOwnership($m->fresh(), now(), $admin);
     expect(fn () => $svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin))->toThrow(FinancialException::class, 'in possession');
     $svc->recordPossession($m->fresh(), now(), 'Inspected and held', $admin);
+    readyToSell($m->fresh());
     $receivable = $svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin);
 
     expect($receivable->total_amount)->toBe(11000000)->and($receivable->schedules()->count())->toBe(4)
@@ -159,6 +161,7 @@ function soldMurabaha(): array
     $svc->recordOwnership($m->fresh(), now(), $admin);
     $svc->recordPossession($m->fresh(), now(), 'ok', $admin);
 
+    readyToSell($m->fresh());
     return [$svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin), $contract, $svc];
 }
 

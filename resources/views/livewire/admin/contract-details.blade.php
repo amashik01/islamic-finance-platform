@@ -82,7 +82,9 @@
             <div class="grid gap-3 sm:grid-cols-3">
                 <div><label for="date" class="label">Date</label><input id="date" type="date" wire:model="date" class="input"></div>
                 @if($stage === Stage::Verified)<div><label for="inv" class="label">Supplier invoice reference</label><input id="inv" wire:model="invoice" class="input"></div>@endif
-                @if($stage === Stage::Owned)<div class="sm:col-span-2"><label for="notes" class="label">How possession (qabd) was taken</label><input id="notes" wire:model="notes" class="input"></div>@endif
+                @if($stage === Stage::Owned)<div class="sm:col-span-2"><label for="notes" class="label">How possession (qabd) was taken</label><input id="notes" wire:model="notes" class="input"></div>
+                    <div><label for="qabd" class="label">Possession type</label><select id="qabd" wire:model="qabdType" class="input"><option value="ACTUAL">Actual</option><option value="CONSTRUCTIVE">Constructive (needs Shariah review)</option></select></div>@endif
+                @if($stage === Stage::Possessed && ! $m->purchase?->risk_confirmed_on)<div class="sm:col-span-2"><label for="notes" class="label">How the seller bore the asset's risk (insurance, storage, custody)</label><input id="notes" wire:model="notes" class="input"></div>@endif
                 @if($stage === Stage::Possessed)<div><label for="due" class="label">First installment due</label><input id="due" type="date" wire:model="firstDue" class="input"></div>@endif
             </div>
             <div class="mt-4">
@@ -91,7 +93,17 @@
                     @case(Stage::Verified)<x-ui.button wire:click="step('purchase')" loading="step">Record asset purchase</x-ui.button>@break
                     @case(Stage::Purchased)<x-ui.button wire:click="step('ownership')" loading="step">Record ownership acquired</x-ui.button>@break
                     @case(Stage::Owned)<x-ui.button wire:click="step('possession')" loading="step">Record possession (qabd)</x-ui.button>@break
-                    @case(Stage::Possessed)<x-ui.button wire:click="step('sale')" loading="step">Execute Murabaha sale</x-ui.button>@break
+                    @case(Stage::Possessed)
+                        @php $saleDoc = \App\Models\ContractDocument::where('contract_id', $c->id)->where('kind', 'MURABAHA_SALE')->where('status', '!=', 'CANCELLED')->latest('id')->first(); @endphp
+                        @if(! $m->purchase?->risk_confirmed_on)
+                            <x-ui.button wire:click="step('risk')" loading="step">Confirm the seller bore the risk</x-ui.button>
+                        @elseif(! $saleDoc)
+                            <x-ui.button wire:click="step('agreement')" loading="step">Prepare the sale agreement</x-ui.button>
+                        @else
+                            <p class="mb-2 text-sm"><a class="text-brand-700 underline" href="{{ route('agreements.show', $saleDoc->reference) }}">Sale agreement {{ $saleDoc->reference }}</a> · {{ $saleDoc->status->label() }} — both the buyer and the seller must sign it before the sale.</p>
+                            <x-ui.button wire:click="step('sale')" loading="step">Execute Murabaha sale</x-ui.button>
+                        @endif
+                    @break
                 @endswitch
             </div>
             <p class="mt-3 text-xs text-ink-500">Steps must be completed in order. The asset cannot be sold before it is owned and in possession.</p>

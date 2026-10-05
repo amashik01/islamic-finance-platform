@@ -33,6 +33,7 @@ it('walks purchase -> ownership -> possession -> sale with the ledger following 
     $svc->recordPossession($m->fresh(), now(), 'Inspected and held', $admin);
     expect(mrbBal(A::MurabahaReceivable, $pid))->toBe(0)->and(reconcile(true)['passed'])->toBeTrue();   // no receivable before the sale
 
+    readyToSell($m->fresh());
     $r = $svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin);
     // Sale price 110,000 = cost 100,000 + Murabaha sale profit 10,000; inventory cleared.
     expect($r->total_amount)->toBe(11000000)->and(mrbBal(A::MurabahaReceivable, $pid))->toBe(11000000)
@@ -62,6 +63,7 @@ function soldMurabahaFixture(): array
     $svc->recordOwnership($m->fresh(), now(), $admin);
     $svc->recordPossession($m->fresh(), now(), 'held', $admin);
 
+    readyToSell($m->fresh());
     return [$svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin), $contract, $svc];
 }
 

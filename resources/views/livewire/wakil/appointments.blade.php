@@ -17,6 +17,8 @@
                     <x-ui.button variant="secondary" wire:click="decline({{ $a->id }})" loading="decline" loading-text="Saving...">Decline</x-ui.button>
                 </div>
             @endif
+            @php $doc = \App\Models\ContractDocument::where('wakalah_appointment_id', $a->id)->whereNotIn('status', ['CANCELLED'])->latest('id')->first(); @endphp
+            @if($doc)<p class="mt-3 text-sm"><a class="text-brand-700 underline" href="{{ route('agreements.show', $doc->reference) }}">Wakalah document {{ $doc->reference }}</a> · {{ $doc->status->label() }}</p>@endif
         </x-ui.card>
     @empty
         <x-ui.empty-state title="No appointments yet." message="When a principal appoints you as Wakil, it appears here." />

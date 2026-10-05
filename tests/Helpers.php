@@ -227,6 +227,7 @@ function murabahaFixture(): array
     $contract = activeContract($project);
     $contract->forceFill(['status' => \App\Enums\ContractStatus::Approved])->save();
     $contract->murabaha->assets()->create(['name' => 'Refrigeration units', 'supplier_name' => 'Supplier Ltd', 'quantity' => 4, 'unit_cost' => 2500000]);
+    prepareFixtureProject($project);   // the Murabaha master agreement is reviewed and executed before any purchase
 
     return [$contract->fresh(), $contract->murabaha, \App\Models\User::factory()->create()];
 }
@@ -398,4 +399,25 @@ function withAqdTerms(\App\Models\Contract $contract): \App\Models\Contract
     $contract->forceFill(['aqd_terms' => completeAqdTerms($contract->contract_type), 'aqd_form_version' => \App\Domain\Aqd\AqdRegistry::for($contract->contract_type)->version()])->save();
 
     return $contract->fresh();
+}
+
+
+/**
+ * Brings a Murabaha contract that is in possession to the point the sale may be executed: seller risk confirmed and the sale
+ * agreement generated, signed by the buyer (the business) and the seller (staff).
+ */
+function readyToSell(\App\Models\MurabahaContract $m): void
+{
+    seedRoles();
+    $m = $m->fresh();
+    $contract = $m->contract;
+    $contract->aqd_form_version === null && withAqdTerms($contract);
+    $m->purchase->forceFill(['possession_on' => now()->subDays(10)])->save();
+    $staff = \App\Models\User::factory()->create();
+    $staff->assignRole(\App\Enums\UserRole::Admin->value);
+    $svc = app(\App\Services\Murabaha\MurabahaService::class);
+    $svc->confirmRiskBorne($m->fresh(), now(), 'Held in the seller\'s insured warehouse.', $staff);
+    $doc = $svc->prepareSaleAgreement($m->fresh(), $staff);
+    signDoc($doc, $contract->project->business->user);
+    signDoc($doc->fresh(), $staff);
 }
