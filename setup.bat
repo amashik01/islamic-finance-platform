@@ -11,18 +11,19 @@ where composer >nul 2>&1 || (echo [X] Composer was not found. Install it from ht
 where npm >nul 2>&1 || (echo [X] Node.js/npm was not found. Install it from https://nodejs.org and run this again. & pause & exit /b 1)
 
 echo [1/6] Enabling required PHP extensions...
-for /f "delims=" %%i in ('php -r "echo php_ini_loaded_file();"') do set "INI=%%i"
+for /f "delims=" %%i in ('php -d display_errors=0 -r "echo php_ini_loaded_file();"') do set "INI=%%i"
 if "%INI%"=="" (echo [X] Could not find php.ini & pause & exit /b 1)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='%INI%'; $c=Get-Content $p; $n=$c -replace '^\s*;\s*extension\s*=\s*(intl|zip|fileinfo|mbstring|pdo_sqlite|sqlite3|pdo_mysql|gd|curl|openssl)\s*$','extension=$1'; Set-Content -Path $p -Value $n -Encoding ASCII" || (echo [!] Could not edit %INI% - right-click setup.bat and choose "Run as administrator".)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='%INI%'; $c=Get-Content $p; $n=$c -replace '^\s*;\s*extension\s*=\s*(intl|zip|fileinfo|mbstring|pdo_sqlite|sqlite3|pdo_mysql|gd|curl)\s*$','extension=$1'; if (($c -join ' ') -match 'php_openssl\.dll') { $n=$n -replace '^\s*extension\s*=\s*openssl\s*$',';extension=openssl' } else { $n=$n -replace '^\s*;\s*extension\s*=\s*openssl\s*$','extension=openssl' }; Set-Content -Path $p -Value $n -Encoding ASCII" || echo [!] Could not edit %INI% - right-click setup.bat and choose Run as administrator.
 
 echo [2/6] Installing PHP packages (a few minutes)...
-php -r "exit(PHP_VERSION_ID>=80300?0:1);"
-if errorlevel 1 (
-  echo     PHP older than 8.3 detected: installing app packages only (test tools need PHP 8.3).
-  call composer install --no-dev --no-interaction --prefer-dist
-) else (
-  call composer install --no-interaction --prefer-dist
-)
+php -r "exit(PHP_VERSION_ID>=80300?0:1);" 2>nul
+if errorlevel 1 goto OLDPHP
+call composer install --no-interaction --prefer-dist
+goto AFTERCOMPOSER
+:OLDPHP
+echo     Older PHP detected - installing app packages only. The test tools need PHP 8.3.
+call composer install --no-dev --no-interaction --prefer-dist
+:AFTERCOMPOSER
 if errorlevel 1 (echo [X] composer install failed. Copy the message above and send it to me. & pause & exit /b 1)
 
 echo [3/6] Preparing settings...
