@@ -23,12 +23,36 @@ class ProjectReview extends Component
 
     public ?string $notice = null;
 
+    public string $wakilId = '';
+
+    public array $wakalahRoles = [];
+
+    public string $wakalahReason = '';
+
     private const NEEDS_REASON = ['revision', 'reject', 'pause', 'cancel'];
 
     public function mount(Project $project): void
     {
         $this->authorize('view', $project);
         $this->project = $project;
+        $this->wakilId = (string) ($project->wakil_id ?? '');
+        $this->wakalahRoles = $project->currentWakalahAppointments()->whereNotNull('wakalah_role')->pluck('wakalah_role')->map(fn ($r) => $r->value)->values()->all();
+    }
+
+    /** Staff appoint / change / remove the Wakil while the project has not been published; the service re-checks everything. */
+    public function saveWakil(): void
+    {
+        $this->reset('error');
+        abort_unless(auth()->user()->can('projects.edit'), 403);
+        try {
+            $this->project = app(\App\Services\Wakalah\WakalahService::class)->assign(
+                $this->project, filled($this->wakilId) ? (int) $this->wakilId : null, $this->wakalahRoles, auth()->user(), trim($this->wakalahReason) ?: null,
+            );
+            $this->notice = 'Wakalah appointment updated.';
+            $this->reset('wakalahReason');
+        } catch (FinancialException $e) {
+            $this->error = $e->getMessage();
+        }
     }
 
     public function ask(string $action): void
@@ -78,8 +102,9 @@ class ProjectReview extends Component
     public function render()
     {
         $p = $this->project->load(['business.user', 'contract.mudarabah', 'contract.musharakah', 'contract.murabaha.assets', 'contract.murabaha.purchase', 'documents', 'shariahReviews.reviewer', 'reviewer']);
+        $wakils = app(\App\Services\Wakalah\WakalahService::class)->eligibleWakils();
         $history = AuditLog::with('user')->where('auditable_type', $p->getMorphClass())->where('auditable_id', $p->id)->latest('id')->get();
 
-        return view('livewire.admin.project-review', ['p' => $p, 'history' => $history])->layout('components.admin-layout', ['title' => $p->title]);
+        return view('livewire.admin.project-review', ['p' => $p, 'history' => $history, 'wakils' => $wakils])->layout('components.admin-layout', ['title' => $p->title]);
     }
 }

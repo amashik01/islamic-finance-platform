@@ -6,17 +6,18 @@ use App\Enums\KycStatus;
 use App\Livewire\Tables\DataTable;
 use App\Models\Business;
 use App\Models\Investor;
+use App\Models\WakilProfile;
 use App\Services\Kyc\KycService;
 use Illuminate\Database\Eloquent\Builder;
 
 class KycTable extends DataTable
 {
-    /** 'investors' or 'businesses' */
+    /** 'investors', 'businesses' or 'wakils' */
     public string $party = 'investors';
 
     protected function heading(): string
     {
-        return 'KYC verification — '.($this->party === 'investors' ? 'Investors' : 'Businesses');
+        return 'KYC verification — '.ucfirst($this->party);
     }
 
     protected function authorizeTable(): void
@@ -26,7 +27,11 @@ class KycTable extends DataTable
 
     private function model(): string
     {
-        return $this->party === 'investors' ? Investor::class : Business::class;
+        return match ($this->party) {
+            'investors' => Investor::class,
+            'wakils' => WakilProfile::class,
+            default => Business::class,
+        };
     }
 
     protected function query(): Builder
@@ -52,7 +57,7 @@ class KycTable extends DataTable
     protected function columns(): array
     {
         return [
-            'name' => ['label' => 'Name', 'render' => fn ($p) => $this->party === 'businesses' ? $p->name : $p->user->name],
+            'name' => ['label' => 'Name', 'render' => fn ($p) => match ($this->party) { 'businesses' => $p->name, 'wakils' => $p->display_name, default => $p->user->name }],
             'email' => ['label' => 'Email', 'render' => fn ($p) => $p->user->email],
             'documents' => ['label' => 'Documents', 'render' => fn ($p) => $p->documents_count],
             'kyc_status' => ['label' => 'Status', 'sortable' => true, 'render' => fn ($p) => self::badge($p->kyc_status)],

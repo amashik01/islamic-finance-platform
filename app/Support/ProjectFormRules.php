@@ -31,7 +31,7 @@ final class ProjectFormRules
                 'MURABAHA' => ['delivery_terms' => ['required', 'string', 'max:2000'], 'payment_terms' => ['required', 'string', 'max:2000'], 'installments' => ['required', 'integer', 'between:1,60'],
                     'ownership_info' => ['required', 'string', 'max:1000'], 'possession_info' => ['required', 'string', 'max:1000']],
                 default => [],
-            },
+            } + ['wakil_id' => ['nullable', 'integer'], 'wakalah_roles' => ['nullable', 'array'], 'wakalah_roles.*' => ['string', 'max:30']],
             4 => match ($type) {
                 'MUDARABAH' => ['capital_required' => self::MONEY, 'business_contribution' => ['nullable', 'regex:/^\d{1,12}(\.\d{1,2})?$/'], 'expected_revenue' => ['nullable', 'regex:/^\d{1,12}(\.\d{1,2})?$/'], 'expected_expenses' => ['nullable', 'regex:/^\d{1,12}(\.\d{1,2})?$/'], 'minimum_amount' => self::MONEY],
                 'MUSHARAKAH' => ['total_capital' => self::MONEY, 'investor_contribution' => self::MONEY, 'business_contribution' => self::MONEY, 'financial_assumptions' => ['required', 'string', 'max:3000'], 'minimum_amount' => self::MONEY],

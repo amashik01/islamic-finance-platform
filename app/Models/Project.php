@@ -18,7 +18,7 @@ class Project extends Model
     use \App\Models\Concerns\EnforcesBdt;
 
     /** Workflow fields (status, funded_amount, publication) change only through services. */
-    protected $guarded = ['id', 'status', 'funded_amount', 'published_at', 'reviewer_id', 'is_demo'];
+    protected $guarded = ['id', 'status', 'funded_amount', 'published_at', 'reviewer_id', 'is_demo', 'wakil_id'];
 
     protected function casts(): array
     {
@@ -41,6 +41,23 @@ class Project extends Model
     public function reviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewer_id');
+    }
+
+    /** The appointed Wakil (a User holding the WAKIL role). Changed only through WakalahService. */
+    public function wakil(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'wakil_id');
+    }
+
+    public function wakalahAppointments(): HasMany
+    {
+        return $this->hasMany(WakalahAppointment::class);
+    }
+
+    /** Live (not revoked) appointments: one per Wakalah role. */
+    public function currentWakalahAppointments(): HasMany
+    {
+        return $this->wakalahAppointments()->where('is_current', true);
     }
 
     public function contract(): HasOne

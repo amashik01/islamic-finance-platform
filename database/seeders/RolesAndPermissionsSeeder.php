@@ -27,6 +27,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'audit.view',
         'settings.manage',
         'roles.manage',
+        'wakils.manage',
     ];
 
     public function run(): void
@@ -53,6 +54,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
         Role::findOrCreate(UserRole::Investor->value, 'web')->syncPermissions([]);
         Role::findOrCreate(UserRole::Business->value, 'web')->syncPermissions(['projects.create', 'projects.edit']);
+        Role::findOrCreate(UserRole::Wakil->value, 'web')->syncPermissions([]);   // appointed, not operating: no permissions
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }

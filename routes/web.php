@@ -77,6 +77,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'verified', 'role:AD
         'businesses' => ['businesses', \App\Livewire\Admin\BusinessesTable::class, 'businesses.view'],
         'kyc' => ['kyc', \App\Livewire\Admin\KycTable::class, 'kyc.view'],
         'kyc/businesses' => ['kyc.businesses', \App\Livewire\Admin\BusinessKycTable::class, 'kyc.view'],
+        'kyc/wakils' => ['kyc.wakils', \App\Livewire\Admin\WakilKycTable::class, 'kyc.view'],
         'documents' => ['documents', \App\Livewire\Admin\DocumentsTable::class, null],
         'projects' => ['projects', \App\Livewire\Admin\ProjectsTable::class, 'projects.view'],
         'projects/pending' => ['projects.pending', \App\Livewire\Admin\PendingProjectsTable::class, 'projects.review'],

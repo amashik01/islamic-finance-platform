@@ -113,6 +113,7 @@
                 <div><dt class="text-ink-500">Contract</dt><dd class="font-medium">{{ $type ? ContractType::from($type)->label() : '—' }}</dd></div>
                 <div><dt class="text-ink-500">Funding target</dt><dd class="font-medium">{{ $project ? $project->fundingTarget()->format() : '—' }}</dd></div>
                 <div><dt class="text-ink-500">Duration</dt><dd class="font-medium">{{ $form['duration_months'] }} months</dd></div>
+                <div><dt class="text-ink-500">Appointed Wakil</dt><dd class="font-medium">{{ $project?->wakil?->wakilProfile?->display_name ?? 'None selected' }}</dd></div>
                 @if($type === 'MURABAHA' && $project?->contract?->murabaha)@php $m = $project->contract->murabaha; @endphp
                     <div><dt class="text-ink-500">Purchase cost</dt><dd class="font-medium">{{ \App\Support\Money\Money::minor($m->purchase_cost)->format() }}</dd></div>
                     <div><dt class="text-ink-500">Murabaha sale profit</dt><dd class="font-medium">{{ \App\Support\Money\Money::minor($m->sale_profit)->format() }}</dd></div>
@@ -125,6 +126,23 @@
         @elseif($step === 7)
             <p class="text-sm text-ink-700">Submitting sends the project to our review team, followed by Shariah review. You cannot edit it while it is under review, unless a revision is requested.</p>
             <x-ui.alert type="warning" title="No guarantees">{{ config('finance.shariah_disclaimer') }} Approval does not guarantee funding.</x-ui.alert>
+        @endif
+        @if($step === 3 && $type)
+            <div class="rounded-card border border-ink-200 p-4">
+                <x-ui.field label="Appointed Wakil (optional)" model="form.wakil_id" type="select" help="A Wakil is an agent acting on a principal's behalf under a Wakalah arrangement. Only approved, active Wakils are listed. Selecting a Wakil is a proposal; it is not an approved Wakalah until the Shariah review confirms it.">
+                    <option value="">Select Wakil</option>
+                    @foreach($wakils as $w)<option value="{{ $w->user_id }}">{{ $w->display_name }} — Wakil</option>@endforeach
+                </x-ui.field>
+                @if($wakalahRoles)
+                    <fieldset class="mt-3"><legend class="label">Wakalah Role</legend>
+                        @foreach($wakalahRoles as $rv => $rl)
+                            <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="form.wakalah_roles" value="{{ $rv }}"> {{ $rl }}</label>
+                        @endforeach
+                        <p class="mt-1 text-xs text-ink-500">Each role is a separate Wakalah appointment. Selecting a Wakil does not create the Murabaha sale: purchase, ownership and possession (qabd) must still take place first.</p>
+                    </fieldset>
+                @endif
+                @error('form.wakil_id')<p class="field-error" role="alert">{{ $message }}</p>@enderror
+            </div>
         @endif
         </div>
 

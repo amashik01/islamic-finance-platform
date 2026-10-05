@@ -57,6 +57,14 @@ class DemoDataSeeder extends Seeder
             $businesses[] = $b;
         }
 
+        // Demo Wakils (registered, verified, active). Eligibility is staff-managed; these are demo records only.
+        foreach (['Rahim Enterprise', 'Karim Trading', 'Noor Commerce', 'ABC Business Services', 'XYZ Enterprise'] as $i => $name) {
+            $wu = $this->user($name.' Contact', 'wakil'.($i + 1).'@demo.test');
+            $wu->assignRole(UserRole::Wakil->value);
+            $profile = \App\Models\WakilProfile::firstOrCreate(['user_id' => $wu->id], ['display_name' => $name]);
+            $profile->forceFill(['kyc_status' => KycStatus::Approved, 'kyc_reviewed_at' => now()])->save();
+        }
+
         // 1) Mudarabah — capital 100,000; actual profit 20,000 at settlement; 70/30 ratio.
         $mud = $this->project($businesses[0], 'Poultry Farm Expansion (Demo)', ContractType::Mudarabah, 10000000, 500000, 12, RiskLevel::Medium, ProjectStatus::Funding);
         $mc = $this->contract($mud, ContractStatus::Approved, $admin);

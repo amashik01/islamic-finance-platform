@@ -40,6 +40,19 @@ Implemented according to the current product specification; requires qualified S
 - **Musharakah profit/loss.** Profit is split by the agreed profit ratio. An ordinary loss is allocated by capital ratio to *both* investors and the business (`CAPITAL_LOSS`, `BUSINESS_CAPITAL_LOSS`); the business capital is returned net of its share (`BUSINESS_CAPITAL_RETURN`). No business debt or manager recovery arises from an ordinary loss. The exceptional (agreed) loss ratio still needs documented Shariah approval before activation and cannot be revoked afterwards.
 - Existing databases created before this change have investments without `PROJECT_FUNDING` transactions and will fail `finance:reconcile` until a backfill posts the missing funding legs through `LedgerService` (never by editing entries).
 
+## Wakalah (appointed Wakil)
+```
+Project
+  └── Appointed Wakil (projects.wakil_id → users.id, restrictOnDelete)
+        └── Wakalah Appointment (one per Wakalah Role: PROPOSED → CONFIRMED → REVOKED)
+```
+- **Wakalah is an agency arrangement** (Muwakkil appoints a Wakil). It is separate from Mudarabah, Musharakah and Murabaha: appointing a Wakil never creates a sale, a ledger transaction or a cash movement, and the Murabaha lifecycle (supplier → purchase → ownership → qabd → sale → receivable) is unchanged.
+- **Eligible Wakil** = user with the `WAKIL` role + active user + verified email + `WakilProfile` with KYC `APPROVED` (reviewed through the existing KYC review) + profile not suspended. Registration/suspension needs `wakils.manage`. The selector and the server-side check use the same single definition (`WakilProfile::eligible()`); a submitted id is never trusted.
+- **Wakalah Role** is explicit where the contract defines roles. Murabaha: *Wakil for Purchase*, *Wakil for Asset Acquisition*, *Wakil for Delivery / Qabd* (each its own appointment). Mudarabah and Musharakah define none yet.
+- **Selecting is not approving.** A selected Wakil is `PROPOSED`; the project's Shariah review approval confirms it, and publishing is refused while an appointment is unconfirmed. The software does not certify anything.
+- **Editing.** The business may change the Wakil only while the project is Draft / Needs Revision; staff (`projects.edit`) until the project is published. After funding starts a separate Wakalah revocation/replacement workflow is required (not built).
+- **Audit events:** `project.wakil_assigned`, `project.wakil_changed`, `project.wakil_removed`, `wakalah.role_changed`, `wakalah.appointment_confirmed`, `wakil.registered`, `wakil.suspended`, `wakil.reinstated`.
+
 ## Quality gates
 - 329 tests (SQLite 315 + MySQL-only constraint/concurrency tests): money maths, calculators, ledger integrity, wallet/withdrawal flows, settlement, Murabaha stages, authorization, IDOR, CSRF, mass assignment, uploads, reports, UI components.
 - Concurrency tests (MySQL) race real database connections to prove a wallet cannot be double-spent and idempotency keys create exactly one record; concurrent final funding, repeated activation, concurrent settlement and funding-vs-settlement races are covered.

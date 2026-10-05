@@ -30,5 +30,6 @@
             <p class="mt-2 text-sm">Shariah review: <x-status-badge :status="$r?->status ?? \App\Enums\ShariahReviewStatus::Pending" /></p>
             <p class="mt-3 text-xs text-ink-500">{{ config('finance.shariah_disclaimer') }}</p>
         </x-ui.card>
+        <x-wakalah.summary :project="$p" />
     </aside>
 </div>

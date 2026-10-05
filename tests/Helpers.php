@@ -166,3 +166,34 @@ function pool(\App\Enums\LedgerAccountType $type, int $projectId): int
 {
     return (int) \App\Models\LedgerAccount::where('type', $type)->where('project_id', $projectId)->value('balance');
 }
+
+/** A registered, verified, active Wakil (organisation profile + WAKIL role). Pass overrides to make an ineligible one. */
+function makeWakil(string $name = 'Rahim Enterprise', array $o = []): \App\Models\User
+{
+    seedRoles();
+    $u = \App\Models\User::factory()->create(array_filter(['email_verified_at' => array_key_exists('verified', $o) && ! $o['verified'] ? null : now()], fn ($v) => true));
+    if ($o['active'] ?? true) {
+        $u->forceFill(['status' => 'ACTIVE'])->save();
+    } else {
+        $u->forceFill(['status' => 'SUSPENDED'])->save();
+    }
+    if ($o['role'] ?? true) {
+        $u->assignRole(\App\Enums\UserRole::Wakil->value);
+    }
+    $p = \App\Models\WakilProfile::create(['user_id' => $u->id, 'display_name' => $name]);
+    $p->forceFill(['kyc_status' => $o['kyc'] ?? \App\Enums\KycStatus::Approved, 'status' => $o['profile_status'] ?? 'ACTIVE'])->save();
+
+    return $u;
+}
+
+/** Valid Mudarabah wizard input; pass overrides (e.g. wakil_id) to extend it. */
+function wakilFormData(array $over = []): array
+{
+    return $over + ['title' => 'Wakil Project '.uniqid(), 'description' => 'A real business activity for the Wakalah tests.', 'industry' => 'Trade', 'purpose' => 'Grow', 'duration_months' => 12, 'risk_level' => 'MEDIUM', 'minimum_amount' => '5000', 'key_risks' => 'Demand',
+        'contract_type' => 'MUDARABAH', 'capital_required' => '100000', 'investor_profit' => '70', 'business_profit' => '30'];
+}
+
+function murabahaFormData(array $over = []): array
+{
+    return $over + wakilFormData(['contract_type' => 'MURABAHA']) + ['asset_name' => 'Cold room', 'supplier' => 'Supplier Ltd', 'quantity' => 2, 'unit_cost' => '50000', 'sale_profit' => '10000', 'installments' => 4, 'delivery_terms' => 'Delivery to premises'];
+}

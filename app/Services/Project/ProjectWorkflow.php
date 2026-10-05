@@ -27,7 +27,7 @@ class ProjectWorkflow
         'cancel' => [[S::Draft, S::Review, S::NeedsRevision, S::Approved, S::Funding, S::Paused], S::Cancelled],
     ];
 
-    public function __construct(private AuditLogger $audit, private \App\Services\Notify\Notifier $notify) {}
+    public function __construct(private AuditLogger $audit, private \App\Services\Notify\Notifier $notify, private \App\Services\Wakalah\WakalahService $wakalah) {}
 
     public function submit(Project $p, User $by): Project
     {
@@ -69,6 +69,9 @@ class ProjectWorkflow
         if (! $review || $review->status !== ShariahReviewStatus::Approved) {
             throw new FinancialException('A Shariah review approval is required before publishing.');
         }
+        if ($this->wakalah->hasUnconfirmed($p)) {
+            throw new FinancialException('The Wakalah appointment has not been confirmed by a Shariah review. Record the review again after the Wakil was selected.');
+        }
 
         return $this->move($p, 'publish', $by, null, fn (Project $p) => $p->forceFill(['published_at' => now()])->save());
     }
@@ -98,6 +101,9 @@ class ProjectWorkflow
             $review = $p->shariahReviews()->latest('id')->first() ?? new ShariahReview(['project_id' => $p->id, 'contract_id' => $p->contract?->id]);
             $review->forceFill(['status' => $status, 'reviewer_id' => $reviewer->id, 'notes' => $notes, 'reviewed_at' => now()])->save();
             $this->audit->record('shariah.'.strtolower($status->value), $p, null, ['status' => $status->value], $notes);
+            if ($status === ShariahReviewStatus::Approved) {
+                $this->wakalah->confirmForProject($p, $reviewer);   // a selected Wakil is only confirmed by the review, never by selection
+            }
 
             return $review;
         });

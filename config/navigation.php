@@ -8,7 +8,7 @@ return [
     'admin' => [
         'COMMAND CENTER' => [['Dashboard', 'admin.dashboard', 'home']],
         'USERS' => [['Investors', 'admin.investors', 'users', 'investors.view'], ['Businesses', 'admin.businesses', 'building', 'businesses.view'], ['Staff', 'admin.users', 'users', 'users.view']],
-        'VERIFICATION' => [['KYC', 'admin.kyc', 'shield', 'kyc.view'], ['Documents', 'admin.documents', 'folder']],
+        'VERIFICATION' => [['KYC', 'admin.kyc', 'shield', 'kyc.view'], ['Wakils', 'admin.kyc.wakils', 'shield', 'kyc.view'], ['Documents', 'admin.documents', 'folder']],
         'PROJECTS' => [['All Projects', 'admin.projects', 'briefcase', 'projects.view'], ['Pending Review', 'admin.projects.pending', 'clipboard', 'projects.review']],
         'CONTRACTS' => [['Mudarabah', 'admin.contracts.mudarabah', 'document', 'contracts.view'], ['Musharakah', 'admin.contracts.musharakah', 'document', 'contracts.view'], ['Murabaha', 'admin.contracts.murabaha', 'document', 'contracts.view']],
         'FINANCE' => [['Investments', 'admin.investments', 'chart', 'investments.view'], ['Wallets', 'admin.wallets', 'wallet', 'wallet.view'], ['Ledger', 'admin.ledger', 'scale', 'ledger.view'], ['Deposits', 'admin.deposits', 'cash', 'deposits.view'], ['Withdrawals', 'admin.withdrawals', 'swap', 'withdrawals.view'], ['Settlements', 'admin.settlements', 'clipboard', 'settlements.view']],

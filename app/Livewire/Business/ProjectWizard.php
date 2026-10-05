@@ -39,6 +39,7 @@ class ProjectWizard extends Component
         'capital_required' => '', 'business_contribution' => '', 'expected_revenue' => '', 'expected_expenses' => '', 'minimum_amount' => '5000',
         'total_capital' => '', 'investor_contribution' => '', 'financial_assumptions' => '',
         'asset_name' => '', 'supplier' => '', 'quantity' => '1', 'unit_cost' => '', 'sale_profit' => '',
+        'wakil_id' => '', 'wakalah_roles' => [],
     ];
 
     public $docFile = null;
@@ -151,7 +152,9 @@ class ProjectWizard extends Component
         $m = fn (?int $v) => $v === null ? '' : Money::minor($v)->toDecimal();
         $base = ['title' => $p->title, 'description' => $p->description, 'industry' => (string) $p->industry, 'purpose' => (string) $p->purpose, 'key_risks' => (string) $p->key_risks,
             'risk_level' => $p->risk_level->value, 'duration_months' => (string) $p->duration_months, 'closing_at' => $p->closing_at?->format('Y-m-d') ?? '', 'contract_type' => $p->contract_type->value,
-            'minimum_amount' => $m($p->minimum_amount)];
+            'minimum_amount' => $m($p->minimum_amount),
+            'wakil_id' => (string) ($p->wakil_id ?? ''),
+            'wakalah_roles' => $p->currentWakalahAppointments()->whereNotNull('wakalah_role')->pluck('wakalah_role')->map(fn ($r) => $r->value)->values()->all()];
         if (! $t) {
             return $base;
         }
@@ -168,6 +171,8 @@ class ProjectWizard extends Component
     {
         return view('livewire.business.project-wizard', [
             'steps' => self::STEPS,
+            'wakils' => app(\App\Services\Wakalah\WakalahService::class)->eligibleWakils(),
+            'wakalahRoles' => $this->form['contract_type'] ? \App\Enums\WakalahRole::optionsFor(ContractType::from($this->form['contract_type'])) : [],
             'preview' => $this->preview(),
             'documents' => $this->projectId ? Project::find($this->projectId)?->documents()->latest('id')->get() ?? collect() : collect(),
             'project' => $this->projectId ? Project::with('contract')->find($this->projectId) : null,

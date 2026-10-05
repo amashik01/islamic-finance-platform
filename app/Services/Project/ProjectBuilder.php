@@ -34,6 +34,7 @@ class ProjectBuilder
         private MurabahaSaleCalculator $murabaha,
         private AuditLogger $audit,
         private \App\Services\Settings\SettingsService $settings,
+        private \App\Services\Wakalah\WakalahService $wakalah,
     ) {}
 
     /** Creates or updates a draft. Only DRAFT / NEEDS_REVISION projects can be edited by the business. */
@@ -77,9 +78,14 @@ class ProjectBuilder
                 $changed = array_filter($terms, fn ($v, $k) => array_key_exists($k, $before) && (string) $before[$k] !== (string) $v, ARRAY_FILTER_USE_BOTH);
                 $changed && $this->audit->record('contract.terms_modified', $contract, array_intersect_key($before, $changed), $changed, 'Draft terms edited by business');
             }
+            // Wakalah: only when the caller supplied the field, so programmatic drafts that ignore Wakalah are untouched.
+            if (array_key_exists('wakil_id', $d)) {
+                $wakilId = filled($d['wakil_id']) ? (int) $d['wakil_id'] : null;
+                $this->wakalah->assign($project, $wakilId, (array) ($d['wakalah_roles'] ?? []), $business->user);
+            }
             $this->audit->record('project.draft_saved', $project);
 
-            return $project->load('contract');
+            return $project->fresh()->load('contract');
         });
     }
 

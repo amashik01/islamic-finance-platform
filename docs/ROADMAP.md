@@ -26,6 +26,7 @@
 | 11 Public site | Home, how it works, opportunities + detail, Islamic finance, for businesses, FAQ, legal placeholders | Done (legal text needs counsel) |
 | 12 Reporting | 15 reports as CSV + print/PDF view, role-scoped, audited, formula-injection safe | Done (native PDF library not added; print view saves as PDF) |
 | 13 Testing | 315 tests on SQLite; 329 on MySQL incl. 11 parallel-connection race tests | Done |
+| Wakalah | Wakil role, WakilProfile eligibility (existing KYC), per-role Wakalah appointments on Projects, audit, Shariah-review confirmation | Done — no Wakil portal, no Wakalah revocation/replacement after funding, no Wakil acceptance step |
 | P0 financial lifecycle | Contract activation state machine, project funding legs (`CapitalDeployed`/`ProjectFunds`), ledger-backed Musharakah business capital, settlement funded from the pool, Musharakah business capital return/loss, extended reconciliation | Done — requires qualified Shariah review before real-money deployment |
 | 14 Polish | Security headers, throttling, loading/empty/error states | Mostly done — see gaps |
 

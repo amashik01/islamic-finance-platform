@@ -107,6 +107,24 @@
                 @if(! in_array($s, [S::Completed, S::Cancelled, S::Rejected, S::Active, S::Defaulted]) && $u->can('projects.approve'))<x-ui.button variant="ghost" wire:click="ask('cancel')">Cancel project</x-ui.button>@endif
             </div>
         </x-ui.card>
+        <x-wakalah.summary :project="$p" />
+        @can('projects.edit')
+            @if(in_array($p->status, [S::Draft, S::NeedsRevision, S::Review, S::Approved], true))
+            <x-ui.card title="Appointment of Wakil">
+                <div class="space-y-3">
+                    <x-ui.field label="Select Wakil" model="wakilId" type="select"><option value="">No Wakil</option>@foreach($wakils as $w)<option value="{{ $w->user_id }}">{{ $w->display_name }} — Wakil</option>@endforeach</x-ui.field>
+                    @if(\App\Enums\WakalahRole::forContract($p->contract_type))
+                        <fieldset><legend class="label">Wakalah Role</legend>
+                            @foreach(\App\Enums\WakalahRole::optionsFor($p->contract_type) as $rv => $rl)<label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="wakalahRoles" value="{{ $rv }}"> {{ $rl }}</label>@endforeach
+                        </fieldset>
+                    @endif
+                    <x-ui.field label="Reason (recorded in the audit log)" model="wakalahReason" />
+                    <x-ui.button wire:click="saveWakil" loading="saveWakil" loading-text="Saving...">Save appointment</x-ui.button>
+                    <p class="text-xs text-ink-500">Changing the Wakil needs the Shariah review to be recorded again before publishing.</p>
+                </div>
+            </x-ui.card>
+            @endif
+        @endcan
     </aside>
 
     <x-ui.modal name="review-action" title="Confirm action">

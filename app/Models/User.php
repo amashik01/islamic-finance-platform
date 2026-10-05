@@ -41,6 +41,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasOne(Business::class);
     }
 
+    public function wakilProfile(): HasOne
+    {
+        return $this->hasOne(WakilProfile::class);
+    }
+
     public function wallets(): HasMany
     {
         return $this->hasMany(Wallet::class);
@@ -61,12 +66,18 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasRole(UserRole::Business->value);
     }
 
+    public function isWakil(): bool
+    {
+        return $this->hasRole(UserRole::Wakil->value);
+    }
+
     /** Portal the user lands in after login. */
     public function homeRoute(): string
     {
         return match (true) {
             $this->isStaffMember() => 'admin.dashboard',
             $this->isBusiness() => 'business.dashboard',
+            $this->isWakil() => 'home',   // no Wakil portal yet: Wakils are appointed, they do not operate in the app
             default => 'investor.dashboard',
         };
     }

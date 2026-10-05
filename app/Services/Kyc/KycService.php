@@ -9,6 +9,7 @@ use App\Exceptions\FinancialException;
 use App\Models\Business;
 use App\Models\Investor;
 use App\Models\User;
+use App\Models\WakilProfile;
 use App\Services\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
 
@@ -29,10 +30,10 @@ class KycService
         }
         $party->forceFill(['kyc_status' => KycStatus::Pending])->save();
         $this->audit->record('kyc.submitted', $party);
-        $this->notify->toStaffWith('kyc.review', 'New KYC submission', ($party instanceof Investor ? $party->user->name : $party->name).' submitted documents for verification.', route('admin.kyc'));
+        $this->notify->toStaffWith('kyc.review', 'New KYC submission', ($party instanceof Business ? $party->name : $party->user->name).' submitted documents for verification.', route('admin.kyc'));
     }
 
-    public function review(Investor|Business $party, User $by, bool $approve, ?string $reason = null): void
+    public function review(Investor|Business|WakilProfile $party, User $by, bool $approve, ?string $reason = null): void
     {
         if (! $by->can($approve ? 'kyc.approve' : 'kyc.reject')) {
             throw new FinancialException('You are not allowed to '.($approve ? 'approve' : 'reject').' verification.');
