@@ -17,7 +17,7 @@ abstract class DataTable extends Component
 {
     use WithPagination;
 
-    #[Url(except: '')]
+    #[Url(as: 'search', except: '')]
     public string $search = '';
 
     #[Url(except: '')]

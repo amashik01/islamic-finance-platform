@@ -71,7 +71,12 @@ class ProjectBuilder
                 $contract->forceFill(['status' => ContractStatus::Draft, 'created_by' => $business->user_id]);
             }
             $contract->save();
+            $before = $contract->exists && ($existing = $contract->terms) ? array_intersect_key($existing->getAttributes(), $terms) : null;
             $this->writeTerms($contract, $type, $terms, $d);
+            if ($before) {
+                $changed = array_filter($terms, fn ($v, $k) => array_key_exists($k, $before) && (string) $before[$k] !== (string) $v, ARRAY_FILTER_USE_BOTH);
+                $changed && $this->audit->record('contract.terms_modified', $contract, array_intersect_key($before, $changed), $changed, 'Draft terms edited by business');
+            }
             $this->audit->record('project.draft_saved', $project);
 
             return $project->load('contract');

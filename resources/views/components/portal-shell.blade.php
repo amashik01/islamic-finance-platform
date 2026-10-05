@@ -50,7 +50,7 @@
         <button class="rounded-control p-2 text-ink-700 hover:bg-ink-100 lg:hidden" @click="drawer = true" aria-label="Open menu"><x-icon name="menu" /></button>
         @isset($topbarLeft){{ $topbarLeft }}@else<h1 class="truncate text-base font-semibold text-ink-900">{{ $title }}</h1>@endisset
         <div class="ml-auto flex items-center gap-2">
-            @isset($topbarRight){{ $topbarRight }}@endisset
+            @if($portal === 'admin')<livewire:admin.global-search />@endif
             <a href="{{ route($portal.'.notifications') ?? '#' }}" class="relative rounded-control p-2 text-ink-600 hover:bg-ink-100" aria-label="Notifications">
                 <x-icon name="bell" />
                 @if(($n = $user?->unreadNotifications()->count()) > 0)<span class="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold-500 px-1 text-[10px] font-bold text-white">{{ $n }}</span><span class="sr-only">{{ $n }} unread</span>@endif
