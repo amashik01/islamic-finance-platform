@@ -20,6 +20,9 @@ Route::get('/legal/{page}', [PageController::class, 'legal'])->name('legal');
 Route::get('/dashboard', fn () => redirect()->route(auth()->user()->homeRoute()))
     ->middleware(['auth', 'verified'])->name('dashboard');
 
+Route::get('/reports/{scope}/{report}', \App\Http\Controllers\ReportController::class)
+    ->middleware(['auth', 'verified', 'throttle:20,1'])->name('reports.download');
+
 /* Private documents are only ever served through this authorised route. */
 Route::get('/documents/{document}', \App\Http\Controllers\DocumentController::class)
     ->middleware(['auth', 'verified', 'throttle:60,1'])->name('documents.show');
@@ -37,6 +40,7 @@ Route::prefix('investor')->name('investor.')->middleware(['auth', 'verified', 'r
     Route::get('/withdrawals', \App\Livewire\Investor\Withdrawals::class)->name('withdrawals');
     Route::get('/documents', \App\Livewire\Portal\DocumentManager::class)->name('documents');
     Route::get('/notifications', \App\Livewire\Portal\NotificationCenter::class)->name('notifications');
+    Route::view('/reports', 'portal.reports', ['portal' => 'investor'])->name('reports');
     Route::get('/settings', Soon::class)->defaults('portal', 'investor')->defaults('title', 'Settings')->defaults('phase', 'Phase 14')->name('settings');
 });
 
@@ -54,7 +58,8 @@ Route::prefix('business')->name('business.')->middleware(['auth', 'verified', 'r
     Route::get('/settlements', \App\Livewire\Business\Settlements::class)->name('settlements');
     Route::get('/documents', \App\Livewire\Portal\DocumentManager::class)->name('documents');
     Route::get('/notifications', \App\Livewire\Portal\NotificationCenter::class)->name('notifications');
-    foreach (['reports' => ['Reports', 'Phase 12'], 'settings' => ['Settings', 'Phase 14']] as $uri => [$title, $phase]) {
+    Route::view('/reports', 'portal.reports', ['portal' => 'business'])->name('reports');
+    foreach (['settings' => ['Settings', 'Phase 14']] as $uri => [$title, $phase]) {
         Route::get("/$uri", Soon::class)->defaults('portal', 'business')->defaults('title', $title)->defaults('phase', $phase)->name($uri);
     }
 });
@@ -98,7 +103,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'verified', 'role:AD
     }
 
     // Arrive in later phases; access control is already enforced.
-    foreach (['reports' => ['Reports', 'reports.view', 'Phase 12'], 'settings' => ['Settings', 'settings.manage', 'Phase 14']] as $uri => [$title, $permission, $phase]) {
+    Route::view('/reports', 'portal.reports', ['portal' => 'admin'])->middleware('permission:reports.view')->name('reports');
+    foreach (['settings' => ['Settings', 'settings.manage', 'Phase 14']] as $uri => [$title, $permission, $phase]) {
         $route = Route::get("/$uri", Soon::class)->defaults('portal', 'admin')->defaults('title', $title)->defaults('phase', $phase)->name($uri);
         if ($permission) {
             $route->middleware("permission:$permission");

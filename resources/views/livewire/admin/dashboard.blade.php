@@ -11,5 +11,5 @@
             <x-ui.empty-state title="No pending withdrawals." message="New withdrawal requests will appear here for review." />
         @endforelse
     </x-ui.card>
-    <p class="text-xs text-ink-500">Charts (capital flow, contract distribution, project lifecycle) arrive with the reporting phase.</p>
+    <livewire:admin.dashboard-charts />
 </div>

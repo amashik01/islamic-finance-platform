@@ -13,6 +13,8 @@
         <x-dashboard.stat-card label="Portfolio Value" :value="$balances['available']->add($balances['invested'])->format()" hint="Available plus invested principal. Excludes any unrealised profit." />
     </div>
 
+    <livewire:investor.portfolio-chart />
+
     <x-ui.card title="Active investments" subtitle="Where your capital is today">
         @forelse ($investments as $i)
             @if($loop->first)<div class="table-wrap hidden sm:block"><table class="table"><thead><tr><th>Project</th><th>Contract</th><th>Invested</th><th>Status</th><th>Maturity</th></tr></thead><tbody>@endif
