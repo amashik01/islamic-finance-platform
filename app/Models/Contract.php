@@ -28,6 +28,25 @@ class Contract extends Model
         ];
     }
 
+    /** The only sanctioned way to change status: validates the transition. Caller owns the transaction and row lock. */
+    public function transitionTo(ContractStatus $to): static
+    {
+        if ($this->status === $to) {
+            return $this;
+        }
+        if (! $this->status->canTransitionTo($to)) {
+            throw new \App\Exceptions\FinancialException("A contract cannot move from {$this->status->label()} to {$to->label()}.");
+        }
+        $this->forceFill(['status' => $to])->save();
+
+        return $this;
+    }
+
+    public function musharakahContribution(): HasOne
+    {
+        return $this->hasOne(MusharakahCapitalContribution::class);
+    }
+
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);

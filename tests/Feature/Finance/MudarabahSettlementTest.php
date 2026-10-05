@@ -36,6 +36,7 @@ function acct(string $type, ?int $projectId): int
 
 it('records investor principal, investor profit AND the business profit share as separate items and ledger entries', function () {
     [$contract, $a, $b, $project] = mudarabahFixture();
+    remit($contract, 2000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(2000000), User::factory()->create());
 
     $sum = fn (Item $t) => (int) $s->items->where('item_type', $t)->sum('amount');
@@ -45,13 +46,16 @@ it('records investor principal, investor profit AND the business profit share as
 
     $business = $s->items->firstWhere('item_type', Item::BusinessProfitShare);
     expect($business->user_id)->toBe($project->business->user_id)->and($business->transaction_id)->not->toBeNull();
-    // Business funds hold its share; project funds were debited by the whole profit.
-    expect(acct(A::BusinessFunds->value, $project->id))->toBe(600000)->and(acct(A::ProjectFunds->value, $project->id))->toBe(-2000000);
+    // Business funds hold its share; the project pool paid out capital + profit and is empty again.
+    expect(acct(A::BusinessFunds->value, $project->id))->toBe(600000)
+        ->and(acct(A::ProjectFunds->value, $project->id))->toBe(0)         // capital + remitted profit were fully distributed
+        ->and(acct(A::CapitalDeployed->value, $project->id))->toBe(0);    // the deployed capital was released
     expect(reconcile(true)['passed'])->toBeTrue();
 });
 
 it('returns principal and profit pro rata to investors', function () {
     [$contract, $a, $b] = mudarabahFixture();
+    remit($contract, 2000000);
     app(SettlementService::class)->settle($contract, Money::minor(2000000), User::factory()->create());
     $w = app(WalletService::class);
     expect($w->balances($w->walletFor($a->user))['available']->minor)->toBe(14000000 + 6000000 + 840000)
@@ -94,6 +98,7 @@ it('refuses to attribute a loss to the manager without a documented reason', fun
 
 it('a profitable settlement never creates a recovery even if fault is flagged', function () {
     [$contract] = mudarabahFixture();
+    remit($contract, 2000000);
     app(SettlementService::class)->settle($contract, Money::minor(2000000), User::factory()->create(), managerAtFault: true, reason: 'n/a');
     expect(ManagerRecovery::count())->toBe(0);
 });
@@ -102,6 +107,7 @@ it('settlement rolls back entirely if any step fails', function () {
     [$contract, $a] = mudarabahFixture();
     // Corrupt: wipe the investor's invested bucket so the principal return would overdraw it.
     corrupt('ledger_accounts', ['type' => A::InvestorInvested->value], ['balance' => 0]);
+    remit($contract, 2000000);
     $txBefore = \App\Models\Transaction::count();
     expect(fn () => app(SettlementService::class)->settle($contract, Money::minor(2000000), User::factory()->create()))->toThrow(FinancialException::class);
     expect(\App\Models\Transaction::count())->toBe($txBefore)->and(\App\Models\Settlement::count())->toBe(0)->and($contract->fresh()->status)->toBe(ContractStatus::Active);

@@ -15,6 +15,12 @@ enum TransactionType: string
     case Reversal = 'REVERSAL';
     case MurabahaPurchase = 'MURABAHA_PURCHASE';
     case MurabahaSale = 'MURABAHA_SALE';
+    case ProjectFunding = 'PROJECT_FUNDING';
+    case CapitalRelease = 'CAPITAL_RELEASE';
+    case MusharakahCapital = 'MUSHARAKAH_CAPITAL';
+    case BusinessRemittance = 'BUSINESS_REMITTANCE';
+    case BusinessCapitalReturn = 'BUSINESS_CAPITAL_RETURN';
+    case CapitalLoss = 'CAPITAL_LOSS';
 
     public function label(): string
     {
@@ -30,6 +36,12 @@ enum TransactionType: string
             self::Reversal => 'Reversal',
             self::MurabahaPurchase => 'Murabaha asset purchase',
             self::MurabahaSale => 'Murabaha sale',
+            self::ProjectFunding => 'Project funding',
+            self::CapitalRelease => 'Project capital release',
+            self::MusharakahCapital => 'Musharakah business capital',
+            self::BusinessRemittance => 'Business remittance',
+            self::BusinessCapitalReturn => 'Business capital return',
+            self::CapitalLoss => 'Business capital loss',
         };
     }
 

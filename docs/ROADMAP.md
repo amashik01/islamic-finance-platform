@@ -25,7 +25,8 @@
 | 10 Admin portal | Command center + charts, global search, reusable data table, project review, KYC, documents, deposits, withdrawals, ledger + reversal, contracts (settle / Murabaha workflow), Shariah reviews, audit log, users + role changes, settings | Done |
 | 11 Public site | Home, how it works, opportunities + detail, Islamic finance, for businesses, FAQ, legal placeholders | Done (legal text needs counsel) |
 | 12 Reporting | 15 reports as CSV + print/PDF view, role-scoped, audited, formula-injection safe | Done (native PDF library not added; print view saves as PDF) |
-| 13 Testing | 208 tests (SQLite) + 3 parallel-connection MySQL tests | Done |
+| 13 Testing | 315 tests on SQLite; 329 on MySQL incl. 11 parallel-connection race tests | Done |
+| P0 financial lifecycle | Contract activation state machine, project funding legs (`CapitalDeployed`/`ProjectFunds`), ledger-backed Musharakah business capital, settlement funded from the pool, Musharakah business capital return/loss, extended reconciliation | Done — requires qualified Shariah review before real-money deployment |
 | 14 Polish | Security headers, throttling, loading/empty/error states | Mostly done — see gaps |
 
 ## Known gaps / not yet built
@@ -36,7 +37,13 @@
 - Native PDF generation, full automated accessibility audit, and image optimisation.
 - Legal pages are placeholders; Shariah/legal/regulatory review is required before any real funds.
 
+- Backfill for databases created before the P0 lifecycle change (missing `PROJECT_FUNDING` legs must be posted via `LedgerService`, never by editing entries).
+- No payout flow yet for business funds (capital return, profit share) or for manager recoveries.
+- Contract status changes in project approve/reject and Murabaha still use direct updates (activation/completion of Mudarabah/Musharakah use the state machine).
+- MySQL CHECK constraints for the new tables exist only on MySQL.
+- Not ready for real money: financial-professional, Shariah, legal/regulatory and security reviews, payment provider and KYC/AML integration are still required.
+
 ## Testing
-- `php artisan test` — runs on SQLite; the 3 concurrency tests skip.
+- `php artisan test` — runs on SQLite; the MySQL-only concurrency/constraint tests skip.
 - MySQL (full suite + real parallel-connection race tests):
   `DB_CONNECTION=mysql DB_DATABASE=islamic_finance_test DB_USERNAME=root php artisan test`

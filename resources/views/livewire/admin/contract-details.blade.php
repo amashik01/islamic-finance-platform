@@ -15,8 +15,25 @@
         </dl>
     </x-ui.card>
 
+    @if($type === ContractType::Musharakah && $c->status === \App\Enums\ContractStatus::Approved && $canManage)
+        <x-ui.card title="Business capital" subtitle="The partnership becomes active when investors are fully funded AND the business capital below has been received.">
+            @php $bc = $c->musharakahContribution; @endphp
+            @if($bc)<p class="text-sm">Received: <strong>{{ Money::minor($bc->amount)->format() }}</strong> · {{ $bc->reference }}</p>
+            @else
+                <div class="flex flex-wrap items-end gap-3"><div><label for="cap" class="label">Amount received (BDT) — agreed {{ Money::minor($t->business_contribution)->format() }}</label><input id="cap" wire:model="capitalAmount" class="input" inputmode="decimal"></div>
+                <x-ui.button wire:click="recordBusinessCapital" loading="recordBusinessCapital" loading-text="Recording...">Record business capital</x-ui.button></div>
+            @endif
+        </x-ui.card>
+    @endif
+
     @if($type !== ContractType::Murabaha)
         @if($c->status === \App\Enums\ContractStatus::Active)
+            @if($u->can('settlements.manage'))
+            <x-ui.card title="Business remittance" subtitle="A profitable settlement distributes only money the project holds. Record the actual profit the business remitted first.">
+                <div class="flex flex-wrap items-end gap-3"><div><label for="remit" class="label">Remitted profit (BDT)</label><input id="remit" wire:model="remitAmount" class="input" inputmode="decimal"></div>
+                <x-ui.button variant="secondary" wire:click="recordRemittance" loading="recordRemittance" loading-text="Recording...">Record remittance</x-ui.button></div>
+            </x-ui.card>
+            @endif
             <x-ui.card title="Settle contract" subtitle="Records the actual result, returns principal and distributes profit as separate ledger transactions.">
                 @unless($u->can('settlements.manage'))<p class="text-sm text-ink-500">You do not have permission to settle contracts.</p>@else
                 <div class="grid gap-4 sm:grid-cols-2">

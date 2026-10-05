@@ -42,6 +42,11 @@ class ContractDetails extends Component
 
     public string $payKey = '';
 
+    // Musharakah business capital / business remittance
+    public string $capitalAmount = '';
+
+    public string $remitAmount = '';
+
     public ?string $error = null;
 
     public ?string $notice = null;
@@ -71,9 +76,9 @@ class ContractDetails extends Component
                 return ['Principal returned to investors' => $r['principal_returned'], 'Investment profit to investors' => $r['investor_profit'], 'Business share of profit' => $r['business_profit'], 'Loss borne by investors' => $r['investor_loss'], 'Recoverable from manager' => $r['manager_liability']];
             }
             $t = $this->contract->musharakah;
-            $r = app(MusharakahProfitCalculator::class)->settle($capital, Money::minor($t->business_contribution), $net, $t->investor_profit_bps, $t->business_profit_bps, $t->loss_allocation_basis);
+            $r = app(MusharakahProfitCalculator::class)->settle($capital, Money::minor($t->business_contribution), $net, $t->investor_profit_bps, $t->business_profit_bps, $t->loss_allocation_basis, $t->loss_exception_approved_by !== null);
 
-            return ['Investor capital returned' => $capital->subtract($r['investor_loss']), 'Investment profit to investors' => $r['investor_profit'], 'Business share of profit' => $r['business_profit'], 'Loss borne by investors' => $r['investor_loss']];
+            return ['Investor capital returned' => $capital->subtract($r['investor_loss']), 'Business capital returned' => Money::minor($t->business_contribution)->subtract($r['business_loss']), 'Investment profit to investors' => $r['investor_profit'], 'Business share of profit' => $r['business_profit'], 'Loss borne by investors' => $r['investor_loss'], 'Loss borne by the business' => $r['business_loss']];
         } catch (\Throwable) {
             return null;
         }
@@ -95,6 +100,39 @@ class ContractDetails extends Component
             $this->dispatch('close-modal', 'settle');
         } catch (\InvalidArgumentException) {
             $this->error = 'Enter the actual net result as a number, for example 20000 or -5000.';
+        } catch (FinancialException $e) {
+            $this->error = $e->getMessage();
+        }
+    }
+
+    /** Musharakah: record the business partner's capital as received (a real ledger transaction). */
+    public function recordBusinessCapital(\App\Services\Contract\MusharakahCapitalService $capital): void
+    {
+        $this->reset('error', 'notice');
+        $this->authorize('manage', $this->contract);
+        try {
+            $capital->recordBusinessContribution($this->contract, Money::parse($this->capitalAmount), 'ui-cap-'.$this->contract->id, auth()->user());
+            $this->notice = 'Business capital recorded.';
+            $this->contract->refresh();
+        } catch (\InvalidArgumentException) {
+            $this->error = 'Enter a valid amount.';
+        } catch (FinancialException $e) {
+            $this->error = $e->getMessage();
+        }
+    }
+
+    /** The business remits the actual profit into the project pool before a profitable settlement. */
+    public function recordRemittance(SettlementService $settlements): void
+    {
+        $this->reset('error', 'notice');
+        $this->authorize('manage', $this->contract);
+        abort_unless(auth()->user()->can('settlements.manage'), 403);
+        try {
+            $settlements->recordBusinessRemittance($this->contract, Money::parse($this->remitAmount), 'ui-remit-'.$this->contract->id.'-'.Str::uuid(), auth()->user());
+            $this->notice = 'Business remittance recorded.';
+            $this->reset('remitAmount');
+        } catch (\InvalidArgumentException) {
+            $this->error = 'Enter a valid amount.';
         } catch (FinancialException $e) {
             $this->error = $e->getMessage();
         }

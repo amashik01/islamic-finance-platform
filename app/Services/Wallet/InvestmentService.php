@@ -11,6 +11,7 @@ use App\Enums\TransactionType;
 use App\Exceptions\FinancialException;
 use App\Models\Investment;
 use App\Models\Investor;
+use App\Models\Contract;
 use App\Models\Project;
 use App\Services\Finance\IdempotencyGuard;
 use App\Services\Ledger\LedgerService;
@@ -20,9 +21,16 @@ use Illuminate\Support\Facades\DB;
 
 class InvestmentService
 {
-    public function __construct(private LedgerService $ledger, private WalletService $wallets, private \App\Services\Notify\Notifier $notify, private \App\Services\Settings\SettingsService $settings) {}
+    public function __construct(private LedgerService $ledger, private WalletService $wallets, private \App\Services\Notify\Notifier $notify, private \App\Services\Settings\SettingsService $settings, private \App\Services\Contract\ContractLifecycle $lifecycle) {}
 
-    /** Available balance -> invested balance, atomically, once per idempotency key. */
+    /**
+     * Accepts an investment atomically, once per idempotency key:
+     *   1. investor claim:    Dr InvestorAvailable / Cr InvestorInvested   (the investor's claim; wallet-internal)
+     *   2. project funding:   Dr CapitalDeployed   / Cr ProjectFunds       (the project pool receives the capital)
+     * The two legs are different facts, not two debits of the same money: the investor's claim stays in InvestorInvested,
+     * and CapitalDeployed is the matching offset for what the pool holds on the investors' behalf.
+     * If this investment completes the funding, the project and its contract are activated in the same transaction.
+     */
     public function invest(Investor $investor, Project $project, Money $amount, string $idempotencyKey): Investment
     {
         $hash = IdempotencyGuard::hash(['op' => 'invest', 'investor' => $investor->id, 'project' => $project->id, 'amount' => $amount->minor]);
@@ -49,11 +57,13 @@ class InvestmentService
                 throw new FinancialException('Complete identity verification before investing.');
             }
 
+            // Lock order everywhere: project -> contract -> investments -> ledger accounts (deadlock-safe).
             $project = Project::whereKey($project->id)->lockForUpdate()->firstOrFail();
+            $contract = Contract::where('project_id', $project->id)->lockForUpdate()->first();
             // Single-currency invariant: amount, project, contract and wallet must all be BDT.
             Currency::require($amount->currency, 'The investment amount');
             Currency::require($project->currency, 'The project');
-            $project->contract && Currency::require($project->contract->currency, 'The contract');
+            $contract && Currency::require($contract->currency, 'The contract');
             if ($project->status !== ProjectStatus::Funding || ($project->closing_at && $project->closing_at->isPast())) {
                 throw new FinancialException('This investment is no longer accepting funds.');
             }
@@ -71,7 +81,7 @@ class InvestmentService
             $investment = Investment::unguarded(fn () => Investment::create([
                 'investor_id' => $investor->id,
                 'project_id' => $project->id,
-                'contract_id' => $project->contract?->id,
+                'contract_id' => $contract?->id,
                 'amount' => $amount->minor,
                 'currency' => $amount->currency,
                 'idempotency_key' => $idempotencyKey,
@@ -89,11 +99,16 @@ class InvestmentService
                 'description' => 'Investment in '.$project->title,
             ]);
 
-            $project->forceFill(['funded_amount' => $project->funded_amount + $amount->minor]);
-            if ($project->funded_amount >= $project->funding_target) {
-                $project->status = ProjectStatus::Active;
-            }
-            $project->save();
+            // The project pool receives the capital. Distinct from the investor's claim above: no second debit of the wallet.
+            $this->ledger->post(TransactionType::ProjectFunding, [
+                ['account' => $this->ledger->systemAccount(A::CapitalDeployed, Currency::CODE, $project->id), 'direction' => D::Debit, 'amount' => $amount],
+                ['account' => $this->ledger->systemAccount(A::ProjectFunds, Currency::CODE, $project->id), 'direction' => D::Credit, 'amount' => $amount],
+            ], 'investment-funding:'.$investment->id, [
+                'project_id' => $project->id, 'investment_id' => $investment->id, 'description' => 'Project funding — '.$project->title,
+            ]);
+
+            $project->forceFill(['funded_amount' => $project->funded_amount + $amount->minor])->save();
+            $this->lifecycle->activateIfFunded($project);   // project + contract, atomically, exactly once
 
             $this->notify->to($investor->user, 'Investment confirmed', 'You invested '.$amount->format().' in '.$project->title.'.', 'success', route('investor.investments.show', $investment));
             if ($project->status === ProjectStatus::Active) {
@@ -101,6 +116,6 @@ class InvestmentService
             }
 
             return $investment;
-        });
+        }, 3);   // retried automatically on a database deadlock
     }
 }

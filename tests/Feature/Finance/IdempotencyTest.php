@@ -102,6 +102,7 @@ it('settlements: same key + same request returns the original; a different resul
     $svc = app(SettlementService::class);
     $admin = User::factory()->create();
 
+    remit($contract->fresh(), 2000000);
     $s = $svc->settle($contract->fresh(), Money::minor(2000000), $admin, false, 'audited', 'settle-key');
     expect($svc->settle($contract->fresh(), Money::minor(2000000), $admin, false, 'audited', 'settle-key')->id)->toBe($s->id);
     expect(fn () => $svc->settle($contract->fresh(), Money::minor(5000000), $admin, false, 'audited', 'settle-key'))->toThrow(IdempotencyConflictException::class, CONFLICT);
@@ -113,6 +114,7 @@ it('the database itself refuses a second settlement for a contract', function ()
     $project = makeProject(['funding_target' => 10000000]);
     $contract = activeContract($project);
     app(InvestmentService::class)->invest(makeInvestor(20000000), $project, Money::minor(10000000), 'db-inv');
+    remit($contract->fresh(), 100000);
     $s = app(SettlementService::class)->settle($contract->fresh(), Money::minor(100000), User::factory()->create());
     expect(fn () => \Illuminate\Support\Facades\DB::table('settlements')->insert(['reference' => 'DUP', 'contract_id' => $contract->id, 'project_id' => $project->id, 'status' => 'POSTED', 'currency' => 'BDT', 'created_at' => now(), 'updated_at' => now()]))
         ->toThrow(\Illuminate\Database\QueryException::class);

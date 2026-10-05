@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 /** BDT is the only currency: any other value anywhere is a reconciliation failure. */
 class CurrencyIntegrity extends Check
 {
-    public const TABLES = ['projects', 'contracts', 'investments', 'wallets', 'ledger_accounts', 'transactions', 'deposits', 'withdrawals', 'settlements', 'manager_recoveries'];
+    public const TABLES = ['projects', 'contracts', 'investments', 'wallets', 'ledger_accounts', 'transactions', 'deposits', 'withdrawals', 'settlements', 'manager_recoveries', 'musharakah_capital_contributions'];
 
     public function name(): string
     {

@@ -53,6 +53,20 @@ class SettlementIntegrity extends Check
                 }
             }
 
+            $net = (int) $s->actual_net_result;
+            // Musharakah: both partners' capital is accounted for — returned or lost, exactly the capital contributed.
+            if ($contract->contract_type === 'MUSHARAKAH') {
+                $inv = (int) $items->where('item_type', 'PRINCIPAL')->sum('amount') + abs((int) $items->where('item_type', 'ADJUSTMENT')->sum('amount'));
+                $biz = (int) $items->where('item_type', 'BUSINESS_CAPITAL_RETURN')->sum('amount') + abs((int) $items->where('item_type', 'BUSINESS_CAPITAL_LOSS')->sum('amount'));
+                $terms = DB::table('musharakah_contracts')->where('contract_id', $contract->id)->first();
+                if ($terms && ($inv !== (int) $terms->investor_contribution || $biz !== (int) $terms->business_contribution)) {
+                    $e[] = "Settlement #{$s->id} (contract #{$contract->id}, project #{$s->project_id}): Musharakah capital completeness failed — settled investor capital $inv / business capital $biz do not match the agreed contributions.";
+                }
+                if ($net < 0 && $terms && ($inv - (int) $items->where('item_type', 'PRINCIPAL')->sum('amount')) + abs((int) $items->where('item_type', 'BUSINESS_CAPITAL_LOSS')->sum('amount')) !== abs($net)) {
+                    $e[] = "Settlement #{$s->id}: investor loss plus business loss does not equal the actual loss.";
+                }
+            }
+
             // Profit mismatch: investor profit + business profit = actual profit; none on a loss.
             $investorProfit = (int) $items->where('item_type', 'INVESTMENT_PROFIT')->sum('amount');
             $businessProfit = (int) $items->where('item_type', 'BUSINESS_PROFIT_SHARE')->sum('amount');

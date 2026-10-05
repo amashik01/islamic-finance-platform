@@ -105,3 +105,98 @@ it('the books reconcile after a burst of parallel investments and withdrawals', 
     $r = app(\App\Services\Finance\Reconciliation\ReconciliationService::class)->run();
     expect(\App\Services\Finance\Reconciliation\ReconciliationService::passed($r, true))->toBeTrue(json_encode(collect($r)->flatMap(fn ($x) => $x->errors)->all()));
 });
+
+/* ---- P0: activation, project funding and settlement under real parallel connections ---- */
+
+function okCount(array $out): int { return collect($out)->filter(fn ($o) => $o === 'OK')->count(); }
+function errorCount(array $out): int { return collect($out)->filter(fn ($o) => str_starts_with($o, 'ERROR'))->count(); }
+function booksReconcile(): void
+{
+    $r = app(\App\Services\Finance\Reconciliation\ReconciliationService::class)->run();
+    expect(\App\Services\Finance\Reconciliation\ReconciliationService::passed($r, true))->toBeTrue(json_encode(collect($r)->flatMap(fn ($x) => $x->errors)->all()));
+}
+
+it('25. concurrent final funding: only the investments that fit succeed, and the contract activates exactly once', function () {
+    $project = realProject(\App\Enums\ContractType::Mudarabah);          // target BDT 100,000
+    $first = makeInvestor(20000000);
+    fund($first, $project, 5000000);                                      // 50,000 already in
+    $others = array_map(fn () => makeInvestor(20000000), range(1, 4));
+    DB::commit();
+
+    $out = race(array_map(fn ($inv, $i) => ['invest', $inv->id, '50000', "final-$i", $project->id], $others, array_keys($others)));
+
+    expect(okCount($out))->toBe(1)->and(errorCount($out))->toBe(0)
+        ->and($project->fresh()->funded_amount)->toBe(10000000)->and($project->fresh()->status)->toBe(\App\Enums\ProjectStatus::Active)
+        ->and(\App\Models\AuditLog::where('action', 'contract.activated')->count())->toBe(1)
+        ->and(\App\Models\Transaction::where('type', \App\Enums\TransactionType::ProjectFunding)->count())->toBe(2)
+        ->and(pool(\App\Enums\LedgerAccountType::ProjectFunds, $project->id))->toBe(10000000);
+    booksReconcile();
+});
+
+it('26. the same idempotency key in parallel: one investment, one funding transaction, one activation', function () {
+    $project = realProject(\App\Enums\ContractType::Mudarabah);
+    $investor = makeInvestor(20000000);
+    DB::commit();
+
+    $out = race(array_map(fn () => ['invest', $investor->id, '100000', 'one-key', $project->id], range(1, 6)));
+
+    expect(errorCount($out))->toBe(0)->and(Investment::count())->toBe(1)
+        ->and(\App\Models\Transaction::where('type', \App\Enums\TransactionType::ProjectFunding)->count())->toBe(1)
+        ->and(\App\Models\AuditLog::where('action', 'contract.activated')->count())->toBe(1)
+        ->and($project->fresh()->status)->toBe(\App\Enums\ProjectStatus::Active);
+    booksReconcile();
+});
+
+it('27. concurrent settlements of one contract produce exactly one settlement and no negative pool', function () {
+    $project = realProject(\App\Enums\ContractType::Mudarabah);
+    fund(makeInvestor(20000000), $project, 10000000);
+    $contract = $project->contract->fresh();
+    remit($contract, 2000000);
+    DB::commit();
+
+    $out = race(array_map(fn ($i) => ['settle', $contract->id, '20000', "settle-$i"], range(1, 5)));
+
+    expect(errorCount($out))->toBe(0)->and(\App\Models\Settlement::where('contract_id', $contract->id)->count())->toBe(1)
+        ->and(pool(\App\Enums\LedgerAccountType::ProjectFunds, $project->id))->toBeGreaterThanOrEqual(0)
+        ->and(pool(\App\Enums\LedgerAccountType::CapitalDeployed, $project->id))->toBe(0);
+    booksReconcile();
+});
+
+it('28. funding racing settlement: ProjectFunds never goes negative and the books reconcile', function () {
+    $project = realProject(\App\Enums\ContractType::Mudarabah);
+    fund(makeInvestor(20000000), $project, 10000000);                    // fully funded and active
+    $contract = $project->contract->fresh();
+    $late = array_map(fn () => makeInvestor(20000000), range(1, 3));
+    DB::commit();
+
+    $jobs = [['settle', $contract->id, '0', 'race-settle']];
+    foreach ($late as $i => $inv) {
+        $jobs[] = ['invest', $inv->id, '10000', "late-$i", $project->id];
+    }
+    $out = race($jobs);
+
+    expect(errorCount($out))->toBe(0)->and(Investment::count())->toBe(1)    // a closed project accepts no further capital
+        ->and(pool(\App\Enums\LedgerAccountType::ProjectFunds, $project->id))->toBeGreaterThanOrEqual(0);
+    booksReconcile();
+});
+
+it('29. concurrent contributions (same and different keys) record the Musharakah business capital exactly once; activation happens once', function () {
+    $project = realProject(\App\Enums\ContractType::Musharakah);
+    fund(makeInvestor(80000000), $project, 70000000);
+    $contract = $project->contract->fresh();
+    DB::commit();
+
+    $jobs = [];
+    foreach (range(1, 3) as $i) {
+        $jobs[] = ['contribute', $contract->id, '300000', 'cap-same'];
+        $jobs[] = ['contribute', $contract->id, '300000', "cap-diff-$i"];
+    }
+    $out = race($jobs);
+
+    expect(errorCount($out))->toBe(0)->and(\App\Models\MusharakahCapitalContribution::where('contract_id', $contract->id)->count())->toBe(1)
+        ->and(\App\Models\Transaction::where('type', \App\Enums\TransactionType::MusharakahCapital)->count())->toBe(1)
+        ->and(\App\Models\AuditLog::where('action', 'contract.activated')->where('auditable_id', $contract->id)->count())->toBe(1)
+        ->and($contract->fresh()->status)->toBe(\App\Enums\ContractStatus::Active)
+        ->and(pool(\App\Enums\LedgerAccountType::ProjectFunds, $project->id))->toBe(100000000);
+    booksReconcile();
+});

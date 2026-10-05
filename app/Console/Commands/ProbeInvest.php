@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 /** Test helper used by tests/Concurrency to race real database connections. Disabled in production. */
 class ProbeInvest extends Command
 {
-    protected $signature = 'finance:probe {action : invest|withdraw} {investor} {amount} {key} {project?}';
+    protected $signature = 'finance:probe {action : invest|withdraw|settle|contribute|remit} {investor : investor id (invest/withdraw) or contract id (settle/contribute/remit)} {amount} {key} {project?}';
 
     protected $description = 'Concurrency probe (testing only)';
 
@@ -22,12 +22,23 @@ class ProbeInvest extends Command
             return self::FAILURE;
         }
         try {
-            $investor = Investor::findOrFail($this->argument('investor'));
             $amount = Money::parse($this->argument('amount'));
-            if ($this->argument('action') === 'invest') {
-                $investments->invest($investor, Project::findOrFail($this->argument('project')), $amount, $this->argument('key'));
+            $action = $this->argument('action');
+            if (in_array($action, ['settle', 'contribute', 'remit'], true)) {
+                $contract = \App\Models\Contract::findOrFail($this->argument('investor'));
+                $admin = \App\Models\User::orderBy('id')->firstOrFail();
+                match ($action) {
+                    'settle' => app(\App\Services\Settlement\SettlementService::class)->settle($contract, $amount, $admin, false, 'probe', $this->argument('key')),
+                    'contribute' => app(\App\Services\Contract\MusharakahCapitalService::class)->recordBusinessContribution($contract, $amount, $this->argument('key'), $admin),
+                    'remit' => app(\App\Services\Settlement\SettlementService::class)->recordBusinessRemittance($contract, $amount, $this->argument('key'), $admin),
+                };
             } else {
-                $wallets->requestWithdrawal($investor->user, $amount, $this->argument('key'));
+                $investor = Investor::findOrFail($this->argument('investor'));
+                if ($action === 'invest') {
+                    $investments->invest($investor, Project::findOrFail($this->argument('project')), $amount, $this->argument('key'));
+                } else {
+                    $wallets->requestWithdrawal($investor->user, $amount, $this->argument('key'));
+                }
             }
             $this->line('OK');
         } catch (\App\Exceptions\FinancialException $e) {

@@ -46,6 +46,7 @@ it('mudarabah: 100k capital, 20k profit, 70/30 -> investors get principal plus 1
     [$contract, $a, $b] = fundedMudarabah();
     $admin = User::factory()->create();
 
+    remit($contract, 2000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(2000000), $admin);
 
     // A: 60% of 14,000 = 8,400 ; B: 40% = 5,600. Principal back in full.
@@ -62,6 +63,7 @@ it('mudarabah: 100k capital, 20k profit, 70/30 -> investors get principal plus 1
 it('mudarabah: cannot be settled twice', function () {
     [$contract] = fundedMudarabah();
     $svc = app(SettlementService::class);
+    remit($contract, 100000);
     $svc->settle($contract, Money::minor(100000), User::factory()->create());
     $svc->settle($contract->fresh(), Money::minor(100000), User::factory()->create());
 })->throws(FinancialException::class);
@@ -87,6 +89,7 @@ it('musharakah: 700k investor + 300k business, 50/50 profit on 100k -> investor 
     $inv = makeInvestor(80000000);
     app(InvestmentService::class)->invest($inv, $project, Money::minor(70000000), 'msk');
 
+    remit($contract->fresh(), 10000000);
     app(SettlementService::class)->settle($contract->fresh(), Money::minor(10000000), User::factory()->create());
 
     expect(bal($inv)['available'])->toBe(10000000 + 70000000 + 5000000)->and(bal($inv)['invested'])->toBe(0);

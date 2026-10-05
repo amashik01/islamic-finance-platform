@@ -43,6 +43,7 @@ it('derives ownership from capital and keeps the profit ratio independent', func
 
 it('profit is distributed by the agreed profit ratio, business share recorded', function () {
     [$contract, $inv, $project] = musharakahFixture();
+    remit($contract, 10000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(10000000), User::factory()->create());
     expect((int) $s->items->where('item_type', Item::InvestmentProfit)->sum('amount'))->toBe(5000000)
         ->and((int) $s->items->where('item_type', Item::BusinessProfitShare)->sum('amount'))->toBe(5000000)

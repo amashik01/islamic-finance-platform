@@ -11,6 +11,8 @@ enum SettlementItemType: string
     case Adjustment = 'ADJUSTMENT';
     case BusinessProfitShare = 'BUSINESS_PROFIT_SHARE';
     case ManagerLiability = 'MANAGER_LIABILITY';
+    case BusinessCapitalReturn = 'BUSINESS_CAPITAL_RETURN';
+    case BusinessCapitalLoss = 'BUSINESS_CAPITAL_LOSS';
 
     public function label(): string
     {
@@ -22,6 +24,8 @@ enum SettlementItemType: string
             self::Adjustment => 'Adjustments',
             self::BusinessProfitShare => 'Business profit share',
             self::ManagerLiability => 'Manager liability (recoverable)',
+            self::BusinessCapitalReturn => 'Business capital return',
+            self::BusinessCapitalLoss => 'Business capital loss',
         };
     }
 

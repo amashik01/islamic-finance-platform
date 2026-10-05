@@ -2,11 +2,13 @@
 
 namespace App\Services\Finance\Reconciliation;
 
+use App\Services\Finance\Reconciliation\Checks\ContractLifecycleIntegrity;
 use App\Services\Finance\Reconciliation\Checks\CurrencyIntegrity;
 use App\Services\Finance\Reconciliation\Checks\IdempotencyIntegrity;
 use App\Services\Finance\Reconciliation\Checks\InvestmentIntegrity;
 use App\Services\Finance\Reconciliation\Checks\LedgerBalance;
 use App\Services\Finance\Reconciliation\Checks\MurabahaReceivables;
+use App\Services\Finance\Reconciliation\Checks\ProjectFunding;
 use App\Services\Finance\Reconciliation\Checks\SettlementIntegrity;
 use App\Services\Finance\Reconciliation\Checks\WalletIntegrity;
 
@@ -16,7 +18,7 @@ class ReconciliationService
     /** @return list<Check> */
     public function checks(): array
     {
-        return [new CurrencyIntegrity, new LedgerBalance, new WalletIntegrity, new InvestmentIntegrity, new SettlementIntegrity, new MurabahaReceivables, new IdempotencyIntegrity];
+        return [new CurrencyIntegrity, new LedgerBalance, new WalletIntegrity, new InvestmentIntegrity, new ProjectFunding, new ContractLifecycleIntegrity, new SettlementIntegrity, new MurabahaReceivables, new IdempotencyIntegrity];
     }
 
     /** @return list<CheckResult> */

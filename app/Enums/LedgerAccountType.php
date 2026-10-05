@@ -15,6 +15,7 @@ enum LedgerAccountType: string
     case MurabahaInventory = 'MURABAHA_INVENTORY';
     case MurabahaReceivable = 'MURABAHA_RECEIVABLE';
     case MurabahaSaleProfit = 'MURABAHA_SALE_PROFIT';
+    case CapitalDeployed = 'CAPITAL_DEPLOYED';
 
     public function label(): string
     {
@@ -30,6 +31,7 @@ enum LedgerAccountType: string
             self::MurabahaInventory => 'Murabaha inventory (owned asset)',
             self::MurabahaReceivable => 'Murabaha receivable',
             self::MurabahaSaleProfit => 'Murabaha sale profit',
+            self::CapitalDeployed => 'Capital deployed to project',
         };
     }
 
@@ -40,7 +42,7 @@ enum LedgerAccountType: string
     public function normalSide(): string
     {
         return match ($this) {
-            self::PlatformCash, self::MurabahaInventory, self::MurabahaReceivable => 'DEBIT',
+            self::PlatformCash, self::MurabahaInventory, self::MurabahaReceivable, self::CapitalDeployed => 'DEBIT',
             default => 'CREDIT',
         };
     }

@@ -46,6 +46,9 @@ class MusharakahLossException
 
     public function revoke(MusharakahContract $terms, User $by, string $reason): MusharakahContract
     {
+        if (in_array($terms->contract->status, [ContractStatus::Active, ContractStatus::Completed, ContractStatus::Defaulted], true)) {
+            throw new FinancialException('The loss allocation cannot be changed once the contract has started.');
+        }
         $terms->forceFill(['loss_allocation_basis' => LossAllocationBasis::CapitalRatio, 'loss_exception_reason' => null, 'loss_exception_approved_by' => null, 'loss_exception_approved_at' => null])->save();
         $this->audit->record('musharakah.loss_exception_revoked', $terms->contract, null, ['loss_allocation_basis' => 'CAPITAL_RATIO'], $reason);
 

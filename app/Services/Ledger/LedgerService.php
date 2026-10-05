@@ -28,6 +28,7 @@ class LedgerService
     private const NON_NEGATIVE = [
         LedgerAccountType::InvestorAvailable, LedgerAccountType::InvestorInvested, LedgerAccountType::InvestorPending,
         LedgerAccountType::MurabahaReceivable, LedgerAccountType::MurabahaInventory,
+        LedgerAccountType::ProjectFunds, LedgerAccountType::CapitalDeployed,   // the project pool can never distribute money it does not hold
     ];
 
     public function systemAccount(LedgerAccountType $type, string $currency = Currency::CODE, ?int $projectId = null): LedgerAccount
@@ -112,8 +113,11 @@ class LedgerService
                 $newBalance = $account->balance + $delta;
 
                 if ($newBalance < 0 && in_array($account->type, self::NON_NEGATIVE, true)) {
-                    throw new FinancialException($account->type === LedgerAccountType::MurabahaReceivable
-                        ? 'The payment exceeds the outstanding receivable.' : 'Insufficient available balance.');
+                    throw new FinancialException(match ($account->type) {
+                        LedgerAccountType::MurabahaReceivable => 'The payment exceeds the outstanding receivable.',
+                        LedgerAccountType::ProjectFunds, LedgerAccountType::CapitalDeployed => 'The project does not hold enough funds for this movement.',
+                        default => 'Insufficient available balance.',
+                    });
                 }
                 LedgerAccount::withBalanceWrites(fn () => $account->forceFill(['balance' => $newBalance])->save());
 

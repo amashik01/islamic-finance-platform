@@ -28,11 +28,21 @@ Run tests: `php artisan test`.
 
 ## Financial integrity
 - **Operational currency: BDT only.** No FX, no other currencies; non-BDT is rejected in code and (on MySQL) by database constraints.
-- `php artisan finance:reconcile` runs read-only integrity checks (ledger, wallets, investments, settlements, Murabaha, idempotency). Add `--strict` for CI/deployment gates; any failure exits non-zero.
+- `php artisan finance:reconcile` runs read-only integrity checks (currency, ledger, wallets, investments, project funding, contract lifecycle, settlements, Murabaha, idempotency; failures name project/contract/investment/settlement/transaction ids). Add `--strict` for CI/deployment gates; any failure exits non-zero.
+
+## Contract lifecycle and capital flow (Mudarabah / Musharakah)
+Implemented according to the current product specification; requires qualified Shariah review before real-money deployment.
+
+- **Activation rule.** A contract is activated only by `ContractLifecycle::activateIfFunded`, inside the funding transaction, exactly once (state machine `Approved → Active`). It requires: the contract is Approved, the latest Shariah review is Approved, the project is fully funded, and — for Musharakah — the business capital contribution has been received. Partial funding, or investors alone in a Musharakah, never starts the contract.
+- **Project funding.** Each investment posts two *different* facts, never two debits of the same money: the investor claim (`InvestorAvailable → InvestorInvested`) and the pool funding (`CapitalDeployed → ProjectFunds`, type `PROJECT_FUNDING`). `InvestorInvested` stays the investor's claim; `CapitalDeployed` (debit-normal) is the offset for the capital the pool holds on investors' behalf. `ProjectFunds` can no longer go negative, so the pool cannot be over-distributed.
+- **Musharakah capital.** The business contribution is a ledger-backed record (`musharakah_capital_contributions`, tx `MUSHARAKAH_CAPITAL`: Dr PlatformCash / Cr ProjectFunds), exactly once per contract, amount equal to the agreed contribution.
+- **Settlement funding.** Settlement pays out of `ProjectFunds`. A profit therefore requires the business to remit the actual profit first (`BUSINESS_REMITTANCE`); otherwise the settlement is refused with the shortfall. Principal is released per investment (`CAPITAL_RELEASE`).
+- **Musharakah profit/loss.** Profit is split by the agreed profit ratio. An ordinary loss is allocated by capital ratio to *both* investors and the business (`CAPITAL_LOSS`, `BUSINESS_CAPITAL_LOSS`); the business capital is returned net of its share (`BUSINESS_CAPITAL_RETURN`). No business debt or manager recovery arises from an ordinary loss. The exceptional (agreed) loss ratio still needs documented Shariah approval before activation and cannot be revoked afterwards.
+- Existing databases created before this change have investments without `PROJECT_FUNDING` transactions and will fail `finance:reconcile` until a backfill posts the missing funding legs through `LedgerService` (never by editing entries).
 
 ## Quality gates
-- 208 tests: money maths, calculators, ledger integrity, wallet/withdrawal flows, settlement, Murabaha stages, authorization, IDOR, CSRF, mass assignment, uploads, reports, UI components.
-- Concurrency tests (MySQL) race real database connections to prove a wallet cannot be double-spent and idempotency keys create exactly one record.
+- 329 tests (SQLite 315 + MySQL-only constraint/concurrency tests): money maths, calculators, ledger integrity, wallet/withdrawal flows, settlement, Murabaha stages, authorization, IDOR, CSRF, mass assignment, uploads, reports, UI components.
+- Concurrency tests (MySQL) race real database connections to prove a wallet cannot be double-spent and idempotency keys create exactly one record; concurrent final funding, repeated activation, concurrent settlement and funding-vs-settlement races are covered.
 
 ## Status
 See `docs/ROADMAP.md` for what is done and what is not.

@@ -25,6 +25,19 @@ enum ContractStatus: string
         };
     }
 
+    /** Legal transitions. Everything else is refused by Contract::transitionTo(). */
+    public function canTransitionTo(self $to): bool
+    {
+        return in_array($to, match ($this) {
+            self::Draft => [self::PendingApproval, self::Approved, self::Cancelled],
+            self::PendingApproval => [self::Draft, self::Approved, self::Cancelled],
+            self::Approved => [self::Active, self::Cancelled],
+            self::Active => [self::Completed, self::Defaulted],
+            self::Defaulted => [self::Completed],
+            self::Completed, self::Cancelled => [],
+        }, true);
+    }
+
     /** @return array<string, string> value => label */
     public static function options(): array
     {

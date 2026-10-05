@@ -20,6 +20,7 @@ function healthyBook(): array
     $inv = makeInvestor(30000000);
     app(InvestmentService::class)->invest($inv, $project, Money::minor(10000000), 'rc-1');
     app(WalletService::class)->requestWithdrawal($inv->user, Money::minor(500000), 'rc-w');
+    remit($contract->fresh(), 2000000);
     $settlement = app(SettlementService::class)->settle($contract->fresh(), Money::minor(2000000), User::factory()->create());
 
     [$mc, $m, $admin] = murabahaFixture();
