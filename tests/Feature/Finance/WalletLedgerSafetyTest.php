@@ -44,9 +44,9 @@ it('wallet balance never goes negative across sequential overspends', function (
     $project = makeProject();
     $svc = app(InvestmentService::class);
     $wallets = app(WalletService::class);
-    $svc->invest($inv, $project, Money::minor(600000), 'ns-1');
+    fund($inv, $project, 600000, 'ns-1');
     foreach (['ns-2', 'ns-3'] as $k) {
-        expect(fn () => $svc->invest($inv, $project, Money::minor(600000), $k))->toThrow(FinancialException::class, 'Insufficient');
+        expect(fn () => fund($inv, $project, 600000, $k))->toThrow(FinancialException::class, 'Insufficient');
     }
     expect(fn () => $wallets->requestWithdrawal($inv->user, Money::minor(500000), 'ns-w'))->toThrow(FinancialException::class);
     $b = $wallets->balances($wallets->walletFor($inv->user));
@@ -58,7 +58,7 @@ it('investment and withdrawal cannot both spend the same balance', function () {
     $project = makeProject();
     $wallets = app(WalletService::class);
     $wallets->requestWithdrawal($inv->user, Money::minor(800000), 'race-w');
-    expect(fn () => app(InvestmentService::class)->invest($inv, $project, Money::minor(800000), 'race-i'))->toThrow(FinancialException::class, 'Insufficient');
+    expect(fn () => fund($inv, $project, 800000, 'race-i'))->toThrow(FinancialException::class, 'Insufficient');
     $b = $wallets->balances($wallets->walletFor($inv->user));
     expect($b['available']->minor)->toBe(200000)->and($b['pending']->minor)->toBe(800000);
 });
@@ -74,7 +74,7 @@ it('ledger history is immutable and corrected only by reversal', function () {
 
 it('every posted transaction balances across a realistic flow', function () {
     $inv = makeInvestor(5000000);
-    app(InvestmentService::class)->invest($inv, makeProject(), Money::minor(1000000), 'bal-1');
+    fund($inv, makeProject(), 1000000, 'bal-1');
     app(WalletService::class)->requestWithdrawal($inv->user, Money::minor(200000), 'bal-w');
     foreach (Transaction::with('entries')->get() as $t) {
         expect($t->entries->where('direction', EntryDirection::Debit)->sum('amount'))->toBe($t->entries->where('direction', EntryDirection::Credit)->sum('amount'));

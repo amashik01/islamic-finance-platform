@@ -108,10 +108,11 @@ it('F. underfunded projects never activate, whatever the contract state', functi
 it('F. a final investment is refused (and rolled back) when the contract is not approved', function () {
     foreach ([ContractStatus::Cancelled, ContractStatus::Draft, ContractStatus::PendingApproval] as $status) {
         $project = realProject(ContractType::Mudarabah);
-        corrupt('contracts', ['project_id' => $project->id], ['status' => $status->value]);
         $inv = makeInvestor(20000000);
+        signedParticipation($inv, $project, 10000000);   // the agreement was signed while the contract was approved
+        corrupt('contracts', ['project_id' => $project->id], ['status' => $status->value]);
         $before = [Investment::count(), Transaction::count()];
-        expect(fn () => fund($inv, $project, 10000000))->toThrow(FinancialException::class, 'cannot be activated');
+        expect(fn () => app(\App\Services\Wallet\InvestmentService::class)->invest($inv, $project->fresh(), \App\Support\Money\Money::minor(10000000), 'act-'.$status->value))->toThrow(FinancialException::class, 'has not been approved');
         expect([Investment::count(), Transaction::count()])->toBe($before)->and($project->fresh()->funded_amount)->toBe(0)->and($project->fresh()->status)->toBe(ProjectStatus::Funding);
     }
 });

@@ -57,7 +57,7 @@ it('prevents role escalation through mass assignment', function () {
 it('stops an investor from viewing another investor\'s investment (IDOR)', function () {
     $a = makeInvestor(10000000);
     $b = makeInvestor();
-    $inv = app(InvestmentService::class)->invest($a, makeProject(), Money::minor(1000000), 'idor-1');
+    $inv = fund($a, makeProject(), 1000000, 'idor-1');
 
     expect(Gate::forUser($a->user)->allows('view', $inv))->toBeTrue()
         ->and(Gate::forUser($b->user)->allows('view', $inv))->toBeFalse()
@@ -84,9 +84,8 @@ it('freezes projects for the business once approved', function () {
 it('keeps contracts private to participants', function () {
     $investor = makeInvestor(10000000);
     $project = makeProject();
-    $contract = new Contract(['contract_number' => 'T-1', 'contract_type' => $project->contract_type, 'project_id' => $project->id]);
-    $contract->save();
-    app(InvestmentService::class)->invest($investor, $project->fresh(), Money::minor(1000000), 'c-1');
+    $contract = activeContract($project);
+    fund($investor, $project->fresh(), 1000000, 'c-1');
 
     expect(Gate::forUser($investor->user)->allows('view', $contract))->toBeTrue()
         ->and(Gate::forUser(makeInvestor()->user)->allows('view', $contract))->toBeFalse()

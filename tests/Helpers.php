@@ -16,6 +16,70 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 function seedRoles(): void
 {
     test()->seed(RolesAndPermissionsSeeder::class);
+    seedAqd();
+}
+
+/** A user who holds the Shariah-reviewer permission. */
+function aqdReviewer(): User
+{
+    $u = User::factory()->create();
+    $u->givePermissionTo('shariah.review');
+
+    return $u;
+}
+
+/** Contract templates exist and every current version carries a (test) Shariah reviewer's approval, so agreements can be generated. */
+function seedAqd(): void
+{
+    $svc = app(\App\Services\Aqd\ContractTemplateService::class);
+    $svc->seed();
+    $pending = \App\Models\ContractTemplateVersion::where('shariah_review_status', 'PENDING')->get();
+    if ($pending->isNotEmpty()) {
+        $reviewer = aqdReviewer();
+        foreach ($pending as $v) {
+            $svc->review($v, $reviewer, \App\Enums\ShariahReviewStatus::Approved, 'Test template review.');
+        }
+    }
+}
+
+function signDoc(\App\Models\ContractDocument $d, User $u): \App\Models\ContractSignature
+{
+    return app(\App\Services\Aqd\ContractSigningService::class)->sign($d->fresh(), $u, $u->name, 'password', true);
+}
+
+/** The business signs the project's execution agreement (after the Shariah review approved it). */
+function signMaster(\App\Models\Project $project): \App\Models\ContractDocument
+{
+    $doc = \App\Models\ContractDocument::where('contract_id', $project->contract->id)->where('kind', 'MASTER_AQD')->where('status', 'PENDING_SIGNATURE')->latest('id')->firstOrFail();
+    signDoc($doc, $project->business->user);
+
+    return $doc->fresh();
+}
+
+/**
+ * Takes a FIXTURE project (created without the forms) through the real review and signature steps so investments are allowed:
+ * complete aqd terms, generated agreement, Shariah review, business signature. A project that is already ready is left alone.
+ */
+function prepareFixtureProject(\App\Models\Project $project): void
+{
+    $project = $project->fresh();
+    if (! $project->contract) {   // a bare fixture project gets default terms; it is APPROVED (not active) until it is fully funded
+        $c = activeContract($project);
+        \Illuminate\Support\Facades\DB::table('contracts')->where('id', $c->id)->update(['status' => \App\Enums\ContractStatus::Approved->value]);
+    }
+    $project = $project->fresh();
+    $contract = $project->contract;
+    if (! $contract || \App\Models\ContractDocument::where('contract_id', $contract->id)->where('kind', 'MASTER_AQD')->where('status', 'EXECUTED')->exists()) {
+        return;
+    }
+    seedRoles();
+    $contract->aqd_form_version === null && withAqdTerms($contract);
+    $reviewer = aqdReviewer();
+    // makeProject() seeds a bare Approved review row; the fixture goes through the real review of a generated draft instead.
+    \App\Models\ShariahReview::where('project_id', $project->id)->whereNull('reviewed_terms_hash')->delete();
+    app(\App\Services\Aqd\ContractGenerator::class)->master($project, $reviewer);
+    app(\App\Services\Project\ProjectWorkflow::class)->recordShariahReview($project->fresh(), $reviewer, \App\Enums\ShariahReviewStatus::Approved, 'Fixture review');
+    signMaster($project->fresh());
 }
 
 function makeInvestor(int $availableMinor = 0, bool $verified = true): Investor
@@ -176,7 +240,8 @@ function realProject(\App\Enums\ContractType $type = \App\Enums\ContractType::Mu
     $publish = $overrides['_publish'] ?? true;   // false leaves the project APPROVED (Shariah-reviewed) but unpublished
     unset($overrides['_publish']);
     $business = makeBusiness();
-    $admin = \App\Models\User::factory()->create();
+    seedRoles();
+    $admin = aqdReviewer();
     $base = ['title' => 'Real '.$type->label().' '.uniqid(), 'description' => 'Real workflow project', 'industry' => 'Trade', 'purpose' => 'Grow', 'duration_months' => 12, 'risk_level' => 'MEDIUM', 'minimum_amount' => '5000', 'key_risks' => 'Demand'];
     $terms = match ($type) {
         \App\Enums\ContractType::Mudarabah => ['contract_type' => 'MUDARABAH', 'capital_required' => '100000', 'investor_profit' => '70', 'business_profit' => '30'],
@@ -193,15 +258,39 @@ function realProject(\App\Enums\ContractType $type = \App\Enums\ContractType::Mu
         foreach ($project->fresh()->currentWakalahAppointments()->get() as $a) {
             confirmWakalah($a, $a->wakil);
         }
+        signMaster($project->fresh());
         $wf->publish($project->fresh(), $admin);
     }
 
     return $project->fresh()->load('contract');
 }
 
+/** An investor's executed participation agreement for exactly $minor (review, consent, signature), not yet used. */
+function signedParticipation(\App\Models\Investor $investor, \App\Models\Project $project, int $minor): \App\Models\ContractDocument
+{
+    // A project that is not open for funding cannot be prepared; the generator then refuses with its real reason.
+    if ($project->fresh()->status === \App\Enums\ProjectStatus::Funding) {
+        prepareFixtureProject($project);
+    } else {
+        $project->fresh()->contract ?? activeContract($project->fresh());
+    }
+    $doc = app(\App\Services\Aqd\ContractGenerator::class)->participation($project->fresh(), $investor->fresh(), \App\Support\Money\Money::minor($minor), $investor->user);
+    signDoc($doc, $investor->user);
+
+    return $doc->fresh();
+}
+
+/** Invests through the real workflow: the investor signs a participation agreement for the amount, then the investment is made. */
 function fund(\App\Models\Investor $investor, \App\Models\Project $project, int $minor, ?string $key = null): \App\Models\Investment
 {
-    return app(\App\Services\Wallet\InvestmentService::class)->invest($investor, $project->fresh(), \App\Support\Money\Money::minor($minor), $key ?? 'f-'.uniqid());
+    $svc = app(\App\Services\Wallet\InvestmentService::class);
+    // An idempotent replay of an existing investment needs no new agreement.
+    if ($key && \App\Models\Investment::where('idempotency_key', $key)->exists()) {
+        return $svc->invest($investor, $project->fresh(), \App\Support\Money\Money::minor($minor), $key);
+    }
+    signedParticipation($investor, $project, $minor);
+
+    return $svc->invest($investor, $project->fresh(), \App\Support\Money\Money::minor($minor), $key ?? 'f-'.uniqid());
 }
 
 function recordBusinessCapital(\App\Models\Contract $contract, ?int $minor = null): \App\Models\MusharakahCapitalContribution

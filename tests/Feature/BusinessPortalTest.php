@@ -83,6 +83,6 @@ it('lists only the business\'s own projects and shows revision feedback', functi
 it('keeps investor identities hidden from the business funding view', function () {
     $inv = makeInvestor(10000000);
     $p = makeProject(['title' => 'Funded One']);
-    app(\App\Services\Wallet\InvestmentService::class)->invest($inv, $p, \App\Support\Money\Money::minor(1000000), 'bf');
+    fund($inv, $p, 1000000, 'bf');
     $this->actingAs($p->business->user)->get('/business/funding')->assertSee('Funded One')->assertDontSee($inv->user->name)->assertDontSee($inv->user->email);
 });

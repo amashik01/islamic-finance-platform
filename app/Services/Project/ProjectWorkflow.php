@@ -7,6 +7,9 @@ use App\Enums\KycStatus;
 use App\Enums\ProjectStatus as S;
 use App\Enums\ShariahReviewStatus;
 use App\Exceptions\FinancialException;
+use App\Enums\ContractDocumentKind;
+use App\Enums\ContractDocumentStatus;
+use App\Models\ContractDocument;
 use App\Models\Project;
 use App\Models\ShariahReview;
 use App\Models\User;
@@ -27,7 +30,7 @@ class ProjectWorkflow
         'cancel' => [[S::Draft, S::Review, S::NeedsRevision, S::Approved, S::Funding, S::Paused], S::Cancelled],
     ];
 
-    public function __construct(private AuditLogger $audit, private \App\Services\Notify\Notifier $notify, private \App\Services\Wakalah\WakalahService $wakalah) {}
+    public function __construct(private AuditLogger $audit, private \App\Services\Notify\Notifier $notify, private \App\Services\Wakalah\WakalahService $wakalah, private \App\Services\Aqd\ContractGenerator $generator, private \App\Services\Aqd\AqdGate $gate) {}
 
     public function submit(Project $p, User $by): Project
     {
@@ -45,8 +48,23 @@ class ProjectWorkflow
         if ($missing) {
             throw new FinancialException('Complete the contract terms before submitting: '.implode(', ', array_slice($missing, 0, 6)).(count($missing) > 6 ? ' and '.(count($missing) - 6).' more' : '').'.');
         }
-        $p = $this->move($p, 'submit', $by);
-        ShariahReview::firstOrCreate(['project_id' => $p->id, 'status' => ShariahReviewStatus::Pending], ['contract_id' => $p->contract->id]);
+        $p = DB::transaction(function () use ($p, $by) {
+            // The reviewer reviews the actual generated agreement: generate it (from the approved terms and a Shariah-approved template) first.
+            $draft = $this->generator->master($p, $by);
+            $p = $this->move($p, 'submit', $by);
+            foreach ($p->shariahReviews()->get()->filter(fn ($r) => $r->status->isOpen()) as $old) {
+                $old->forceFill(['status' => ShariahReviewStatus::Superseded])->save();
+            }
+            $review = new ShariahReview(['project_id' => $p->id, 'contract_id' => $p->contract->id]);
+            $review->forceFill([
+                'status' => ShariahReviewStatus::Submitted, 'aqd_type' => $p->contract_type->value, 'template_version_id' => $draft->template_version_id,
+                'review_version' => 1 + $p->shariahReviews()->count(), 'scope' => 'Project terms and the '.$draft->templateVersion->template->code.' template, version '.$draft->templateVersion->version.' (document '.$draft->reference.')',
+            ])->save();
+            $draft->forceFill(['shariah_review_id' => $review->id])->save();
+            $this->audit->record('aqd.submitted_for_shariah_review', $p, null, ['review_id' => $review->id, 'document' => $draft->reference, 'terms_hash' => $draft->terms_hash]);
+
+            return $p;
+        });
         $this->notify->to($p->business->user, 'Project submitted', $p->title.' was submitted for review.', 'info', route('business.projects.show', $p));
         $this->notify->toStaffWith('projects.review', 'New project to review', $p->business->name.' submitted '.$p->title.'.', route('admin.projects.show', $p));
 
@@ -77,9 +95,7 @@ class ProjectWorkflow
         if (! $review || $review->status !== ShariahReviewStatus::Approved) {
             throw new FinancialException('A Shariah review approval is required before publishing.');
         }
-        if ($this->wakalah->hasUnconfirmed($p)) {
-            throw new FinancialException('A Wakalah appointment is not yet confirmed: the Wakil must accept it and a Shariah reviewer must review it (a project-level approval does not confirm a Wakalah).');
-        }
+        $this->gate->assertProjectContractReady($p, true);   // executed agreement, matching review, confirmed Wakalah
 
         return $this->move($p, 'publish', $by, null, fn (Project $p) => $p->forceFill(['published_at' => now()])->save());
     }
@@ -103,12 +119,53 @@ class ProjectWorkflow
         return $this->move($p, 'cancel', $by, $reason);
     }
 
-    public function recordShariahReview(Project $p, User $reviewer, ShariahReviewStatus $status, ?string $notes): ShariahReview
+    /** Starts a review: the reviewer has opened the submission. */
+    public function startShariahReview(Project $p, User $reviewer): ShariahReview
     {
-        return DB::transaction(function () use ($p, $reviewer, $status, $notes) {
+        if (! $reviewer->can('shariah.review')) {
+            throw new FinancialException('Only a Shariah reviewer can start a Shariah review.');
+        }
+        $review = $p->shariahReviews()->latest('id')->first();
+        if (! $review || ! in_array($review->status, [ShariahReviewStatus::Submitted, ShariahReviewStatus::Pending], true)) {
+            throw new FinancialException('There is no submitted review to start.');
+        }
+        $review->forceFill(['status' => ShariahReviewStatus::UnderReview, 'reviewer_id' => $reviewer->id])->save();
+        $this->audit->record('shariah.under_review', $p, null, ['review_id' => $review->id]);
+
+        return $review;
+    }
+
+    public function recordShariahReview(Project $p, User $reviewer, ShariahReviewStatus $status, ?string $notes, ?string $conditions = null): ShariahReview
+    {
+        if (! $reviewer->can('shariah.review')) {
+            throw new FinancialException('Only a Shariah reviewer can record a Shariah review. A business cannot approve its own project.');
+        }
+
+        return DB::transaction(function () use ($p, $reviewer, $status, $notes, $conditions) {
             $review = $p->shariahReviews()->latest('id')->first() ?? new ShariahReview(['project_id' => $p->id, 'contract_id' => $p->contract?->id]);
-            $review->forceFill(['status' => $status, 'reviewer_id' => $reviewer->id, 'notes' => $notes, 'reviewed_at' => now()])->save();
-            $this->audit->record('shariah.'.strtolower($status->value), $p, null, ['status' => $status->value], $notes);
+            $draft = ContractDocument::where('contract_id', $p->contract?->id)->where('kind', ContractDocumentKind::MasterAqd->value)->where('status', ContractDocumentStatus::Draft->value)->latest('id')->first();
+            $review->forceFill(['status' => $status, 'reviewer_id' => $reviewer->id, 'notes' => $notes, 'conditions' => $conditions, 'reviewed_at' => now(), 'aqd_type' => $p->contract_type->value]);
+            if ($status === ShariahReviewStatus::Approved) {
+                if (! $draft || ! $draft->hashIntact()) {
+                    throw new FinancialException('There is no intact generated agreement to approve. The project must be submitted for review first.');
+                }
+                $review->forceFill(['reviewed_terms_hash' => $draft->terms_hash, 'template_version_id' => $draft->template_version_id]);
+            }
+            $review->save();
+            $this->audit->record('shariah.'.strtolower($status->value), $p, null, ['status' => $status->value, 'review_id' => $review->id], $notes);
+            if ($status === ShariahReviewStatus::Approved) {
+                // The approval is recorded: generate the execution version (same terms, with the review block completed) for signature.
+                $exec = $this->generator->master($p->fresh(), $reviewer);
+                if ($exec->terms_hash !== $draft->terms_hash) {
+                    throw new FinancialException('The terms changed while the agreement was under review; the approval does not apply to the new terms.');
+                }
+                $exec->forceFill(['shariah_review_id' => $review->id])->save();
+                $this->audit->record('aqd.shariah_approved', $p, null, ['review_id' => $review->id, 'document' => $exec->reference, 'terms_hash' => $exec->terms_hash], $notes);
+            } elseif ($status === ShariahReviewStatus::Rejected) {
+                $this->audit->record('aqd.shariah_rejected', $p, null, ['review_id' => $review->id], $notes);
+            } elseif ($status === ShariahReviewStatus::NeedsRevision) {
+                $this->audit->record('aqd.revision_requested', $p, null, ['review_id' => $review->id], $notes);
+            }
 
             return $review;
         });

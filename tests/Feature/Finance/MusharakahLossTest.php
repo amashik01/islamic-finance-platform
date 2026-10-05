@@ -20,7 +20,7 @@ function musharakahFixture(): array
     $project = makeProject(['funding_target' => 70000000, 'contract_type' => ContractType::Musharakah]);
     $contract = activeContract($project);
     $inv = makeInvestor(80000000);
-    app(InvestmentService::class)->invest($inv, $project, Money::minor(70000000), 'mk-'.uniqid());
+    fund($inv, $project, 70000000, 'mk-'.uniqid());
 
     return [$contract->fresh(), $inv, $project];
 }

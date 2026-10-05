@@ -333,6 +333,7 @@ it('a project-level Shariah approval does not confirm a Wakalah, and publishing 
     $p = \App\Models\Project::find($project->id);
     expect(fn () => $wf->publish($p, wakalahStaff()))->toThrow(FinancialException::class, 'not yet confirmed');
     confirmWakalah($p->currentWakalahAppointments()->first(), $w);
+    signMaster($p->fresh());   // the business executes the Shariah-reviewed agreement
     expect($wf->publish($p->fresh(), wakalahStaff())->status)->toBe(ProjectStatus::Funding);
 });
 

@@ -30,8 +30,11 @@ it('shows an investor their own balances with plain-language explanations', func
 it('invests from the modal and shows the new balance', function () {
     $inv = makeInvestor(10000000);
     $p = makeProject();
+    prepareFixtureProject($p);
     $this->actingAs($inv->user);
-    Livewire::test(Opportunities::class)->call('startInvest', $p->id)->set('amount', '25,000')->call('confirm')
+    Livewire::test(Opportunities::class)->call('startInvest', $p->id)->set('amount', '25,000')->call('review')->assertSet('error', null)->assertSee('Investment agreement')
+        ->call('confirm')->assertSet('error', 'Confirm that you have read the agreement and accept the disclosure.')
+        ->set('consent', true)->set('typedName', $inv->user->name)->set('password', 'password')->call('confirm')
         ->assertSet('error', null)->assertSee('Investment confirmed');
     expect(Investment::count())->toBe(1)->and($p->fresh()->funded_amount)->toBe(2500000);
 });
@@ -39,23 +42,28 @@ it('invests from the modal and shows the new balance', function () {
 it('a double click on confirm cannot create two investments', function () {
     $inv = makeInvestor(10000000);
     $p = makeProject();
+    prepareFixtureProject($p);
     $this->actingAs($inv->user);
-    $c = Livewire::test(Opportunities::class)->call('startInvest', $p->id)->set('amount', '10000');
+    $c = Livewire::test(Opportunities::class)->call('startInvest', $p->id)->set('amount', '10000')->call('review')
+        ->set('consent', true)->set('typedName', $inv->user->name)->set('password', 'password');
     $key = $c->get('idempotencyKey');
+    $doc = $c->get('documentId');
     $c->call('confirm');
     // Replay the same attempt (slow network, impatient second click)
-    $c->set('projectId', $p->id)->set('amount', '10000')->set('idempotencyKey', $key)->call('confirm');
+    $c->set('projectId', $p->id)->set('documentId', $doc)->set('idempotencyKey', $key)->call('confirm');
     expect(Investment::count())->toBe(1);
 });
 
 it('shows clear errors for insufficient balance, bad amounts and closed projects', function () {
     $inv = makeInvestor(1000000);
     $p = makeProject();
+    prepareFixtureProject($p);
     $this->actingAs($inv->user);
-    Livewire::test(Opportunities::class)->call('startInvest', $p->id)->set('amount', '50000')->call('confirm')->assertSet('error', 'Insufficient available balance.');
-    Livewire::test(Opportunities::class)->call('startInvest', $p->id)->set('amount', 'abc')->call('confirm')->assertHasErrors('amount');
+    Livewire::test(Opportunities::class)->call('startInvest', $p->id)->set('amount', '50000')->call('review')
+        ->set('consent', true)->set('typedName', $inv->user->name)->set('password', 'password')->call('confirm')->assertSet('error', 'Insufficient available balance.');
+    Livewire::test(Opportunities::class)->call('startInvest', $p->id)->set('amount', 'abc')->call('review')->assertHasErrors('amount');
     $closed = makeProject(['status' => \App\Enums\ProjectStatus::Active]);
-    Livewire::test(Opportunities::class)->call('startInvest', $closed->id)->set('amount', '6000')->call('confirm')->assertSet('error', 'This investment is no longer accepting funds.');
+    Livewire::test(Opportunities::class)->call('startInvest', $closed->id)->set('amount', '6000')->call('review')->assertSet('error', 'This investment is no longer accepting funds.');
 });
 
 it('does not offer Murabaha as an investment', function () {
@@ -67,7 +75,7 @@ it('does not offer Murabaha as an investment', function () {
 it('blocks one investor from another investor\'s investment details (IDOR)', function () {
     $a = makeInvestor(10000000);
     $b = makeInvestor();
-    $investment = app(InvestmentService::class)->invest($a, makeProject(), Money::minor(1000000), 'idor');
+    $investment = fund($a, makeProject(), 1000000, 'idor');
     $this->actingAs($b->user)->get(route('investor.investments.show', $investment))->assertForbidden();
     $this->actingAs($a->user)->get(route('investor.investments.show', $investment))->assertOk()->assertSee('Financial summary')->assertSee('Activity timeline');
     Livewire::actingAs($b->user)->test(InvestmentDetails::class, ['investment' => $investment])->assertForbidden();
@@ -77,8 +85,8 @@ it('lists only the investor\'s own investments', function () {
     $a = makeInvestor(10000000);
     $b = makeInvestor(10000000);
     $svc = app(InvestmentService::class);
-    $svc->invest($a, makeProject(['title' => 'Alpha Only']), Money::minor(1000000), 'a1');
-    $svc->invest($b, makeProject(['title' => 'Beta Secret']), Money::minor(1000000), 'b1');
+    fund($a, makeProject(['title' => 'Alpha Only']), 1000000, 'a1');
+    fund($b, makeProject(['title' => 'Beta Secret']), 1000000, 'b1');
     $this->actingAs($a->user)->get('/investor/investments')->assertSee('Alpha Only')->assertDontSee('Beta Secret');
 });
 

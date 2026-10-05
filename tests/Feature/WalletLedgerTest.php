@@ -52,7 +52,7 @@ it('deposit requests are idempotent', function () {
 it('moves available balance into invested balance and updates project funding', function () {
     $investor = makeInvestor(HUNDRED_K);
     $project = makeProject();
-    $inv = app(InvestmentService::class)->invest($investor, $project, Money::minor(6000000), 'inv-1');
+    $inv = fund($investor, $project, 6000000, 'inv-1');
 
     $b = wallets()->balances(wallets()->walletFor($investor->user));
     expect($b['available']->minor)->toBe(4000000)->and($b['invested']->minor)->toBe(6000000)
@@ -64,8 +64,8 @@ it('confirming an investment twice creates only one investment', function () {
     $investor = makeInvestor(HUNDRED_K);
     $project = makeProject();
     $svc = app(InvestmentService::class);
-    $svc->invest($investor, $project, Money::minor(1000000), 'dup');
-    $svc->invest($investor, $project, Money::minor(1000000), 'dup');
+    fund($investor, $project, 1000000, 'dup');
+    fund($investor, $project, 1000000, 'dup');
 
     expect(Investment::count())->toBe(1)
         ->and(wallets()->balances(wallets()->walletFor($investor->user))['available']->minor)->toBe(9000000);
@@ -75,9 +75,9 @@ it('prevents the available balance from going negative across competing investme
     $investor = makeInvestor(1000000); // BDT 10,000
     $project = makeProject();
     $svc = app(InvestmentService::class);
-    $svc->invest($investor, $project, Money::minor(800000), 'a');
+    fund($investor, $project, 800000, 'a');
 
-    expect(fn () => $svc->invest($investor, $project, Money::minor(800000), 'b'))
+    expect(fn () => fund($investor, $project, 800000, 'b'))
         ->toThrow(FinancialException::class, 'Insufficient available balance.');
 
     $b = wallets()->balances(wallets()->walletFor($investor->user));
@@ -89,18 +89,18 @@ it('rejects investing in a project that is not funding or over capacity or unver
     $investor = makeInvestor(HUNDRED_K);
     $svc = app(InvestmentService::class);
 
-    expect(fn () => $svc->invest($investor, makeProject(['status' => ProjectStatus::Active]), Money::minor(1000000), 'x1'))
+    expect(fn () => fund($investor, makeProject(['status' => ProjectStatus::Active]), 1000000, 'x1'))
         ->toThrow(FinancialException::class, 'no longer accepting');
-    expect(fn () => $svc->invest($investor, makeProject(['funding_target' => 1000000]), Money::minor(2000000), 'x2'))
+    expect(fn () => fund($investor, makeProject(['funding_target' => 1000000]), 2000000, 'x2'))
         ->toThrow(FinancialException::class, 'remaining funding capacity');
-    expect(fn () => $svc->invest(makeInvestor(HUNDRED_K, verified: false), makeProject(), Money::minor(1000000), 'x3'))
+    expect(fn () => fund(makeInvestor(HUNDRED_K, verified: false), makeProject(), 1000000, 'x3'))
         ->toThrow(FinancialException::class, 'verification');
 });
 
 it('fully funding a project activates it', function () {
     $investor = makeInvestor(HUNDRED_K);
     $project = makeProject(['funding_target' => 2000000]);
-    app(InvestmentService::class)->invest($investor, $project, Money::minor(2000000), 'full');
+    fund($investor, $project, 2000000, 'full');
     expect($project->fresh()->status)->toBe(ProjectStatus::Active);
 });
 
@@ -180,7 +180,7 @@ it('reverses a transaction with opposite entries instead of editing history', fu
 
 it('cached balances always equal balances recomputed from entries', function () {
     $investor = makeInvestor(HUNDRED_K);
-    app(InvestmentService::class)->invest($investor, makeProject(), Money::minor(3000000), 'rc');
+    fund($investor, makeProject(), 3000000, 'rc');
     $ledger = app(LedgerService::class);
     foreach (App\Models\LedgerAccount::all() as $acct) {
         expect($ledger->recomputeBalance($acct))->toBe($acct->balance);

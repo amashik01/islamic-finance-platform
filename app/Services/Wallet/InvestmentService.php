@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
 
 class InvestmentService
 {
-    public function __construct(private LedgerService $ledger, private WalletService $wallets, private \App\Services\Notify\Notifier $notify, private \App\Services\Settings\SettingsService $settings, private \App\Services\Contract\ContractLifecycle $lifecycle) {}
+    public function __construct(private LedgerService $ledger, private WalletService $wallets, private \App\Services\Notify\Notifier $notify, private \App\Services\Settings\SettingsService $settings, private \App\Services\Contract\ContractLifecycle $lifecycle, private \App\Services\Aqd\AqdGate $gate) {}
 
     /**
      * Accepts an investment atomically, once per idempotency key: Dr InvestorAvailable / Cr InvestorInvested.
@@ -30,11 +30,11 @@ class InvestmentService
      * ownership, deployment, profit, sale or settlement.
      * If this investment completes the funding, the project and its contract are activated in the same transaction.
      */
-    public function invest(Investor $investor, Project $project, Money $amount, string $idempotencyKey): Investment
+    public function invest(Investor $investor, Project $project, Money $amount, string $idempotencyKey, ?\App\Models\ContractDocument $participation = null): Investment
     {
         $hash = IdempotencyGuard::hash(['op' => 'invest', 'investor' => $investor->id, 'project' => $project->id, 'amount' => $amount->minor]);
         try {
-            return $this->place($investor, $project, $amount, $idempotencyKey, $hash);
+            return $this->place($investor, $project, $amount, $idempotencyKey, $hash, $participation);
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
             // A parallel request with the same key won the race: return its result, never a second investment.
             $existing = Investment::where('idempotency_key', $idempotencyKey)->firstOrFail();
@@ -44,9 +44,9 @@ class InvestmentService
         }
     }
 
-    private function place(Investor $investor, Project $project, Money $amount, string $idempotencyKey, string $hash): Investment
+    private function place(Investor $investor, Project $project, Money $amount, string $idempotencyKey, string $hash, ?\App\Models\ContractDocument $participation): Investment
     {
-        return DB::transaction(function () use ($investor, $project, $amount, $idempotencyKey, $hash) {
+        return DB::transaction(function () use ($investor, $project, $amount, $idempotencyKey, $hash, $participation) {
             if ($existing = Investment::where('idempotency_key', $idempotencyKey)->first()) {
                 IdempotencyGuard::assertMatches($existing->request_hash, $hash);
 
@@ -76,8 +76,12 @@ class InvestmentService
                 throw new FinancialException('The amount exceeds the remaining funding capacity.');
             }
 
+            // Financial activation gate: the executed agreements, the Shariah review, the Wakalah and the platform role, checked under the locks.
+            $agreement = $this->gate->assertCanInvest($project, $investor, $amount, $participation);
+
             $wallet = $this->wallets->walletFor($investor->user);
             $investment = Investment::unguarded(fn () => Investment::create([
+                'participation_document_id' => $agreement->id,
                 'investor_id' => $investor->id,
                 'project_id' => $project->id,
                 'contract_id' => $contract?->id,
@@ -89,6 +93,8 @@ class InvestmentService
                 'invested_at' => now(),
                 'maturity_date' => now()->addMonths($project->duration_months)->toDateString(),
             ]));
+
+            $agreement->forceFill(['consumed_by_investment_id' => $investment->id])->save();   // one agreement funds exactly one investment
 
             $this->ledger->post(TransactionType::Investment, [
                 ['account' => $this->wallets->account($wallet, A::InvestorAvailable), 'direction' => D::Debit, 'amount' => $amount],

@@ -23,8 +23,8 @@ function mudarabahFixture(): array
     $a = makeInvestor(20000000);
     $b = makeInvestor(20000000);
     $svc = app(InvestmentService::class);
-    $svc->invest($a, $project, Money::minor(6000000), 'md-a');
-    $svc->invest($b, $project, Money::minor(4000000), 'md-b');
+    fund($a, $project, 6000000, 'md-a');
+    fund($b, $project, 4000000, 'md-b');
 
     return [$contract->fresh(), $a, $b, $project->fresh()];
 }

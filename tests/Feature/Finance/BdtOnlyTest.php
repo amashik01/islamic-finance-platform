@@ -98,19 +98,19 @@ it('rejects an investment when the project or contract is not BDT', function () 
 
         return;
     }
-    expect(fn () => app(InvestmentService::class)->invest($investor, $project->fresh(), Money::minor(1000000), 'bdt-1'))->toThrow(FinancialException::class, 'must be in BDT');
+    expect(fn () => fund($investor, $project->fresh(), 1000000, 'bdt-1'))->toThrow(FinancialException::class, 'must be in BDT');
     expect(\App\Models\Investment::count())->toBe(0);
 
     corrupt('projects', ['id' => $project->id], ['currency' => 'BDT']);
     if (corrupt('contracts', ['project_id' => $project->id], ['currency' => 'USD'])) {
-        expect(fn () => app(InvestmentService::class)->invest($investor, $project->fresh(), Money::minor(1000000), 'bdt-2'))->toThrow(FinancialException::class, 'must be in BDT');
+        expect(fn () => fund($investor, $project->fresh(), 1000000, 'bdt-2'))->toThrow(FinancialException::class, 'must be in BDT');
     }
 });
 
 it('rejects settlement of a non-BDT contract', function () {
     $project = makeProject(['funding_target' => 10000000]);
     $contract = activeContract($project);
-    app(InvestmentService::class)->invest(makeInvestor(20000000), $project, Money::minor(10000000), 'bdt-s');
+    fund(makeInvestor(20000000), $project, 10000000, 'bdt-s');
     if (! corrupt('contracts', ['id' => $contract->id], ['currency' => 'USD'])) {
         expect(true)->toBeTrue();
 

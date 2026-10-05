@@ -11,8 +11,8 @@ it('exports an investor statement as CSV containing only their own rows', functi
     $a = makeInvestor(10000000);
     $b = makeInvestor(10000000);
     $svc = app(InvestmentService::class);
-    $svc->invest($a, makeProject(['title' => 'Alpha Project']), Money::minor(1000000), 'r1');
-    $svc->invest($b, makeProject(['title' => 'Beta Project']), Money::minor(1000000), 'r2');
+    fund($a, makeProject(['title' => 'Alpha Project']), 1000000, 'r1');
+    fund($b, makeProject(['title' => 'Beta Project']), 1000000, 'r2');
 
     $res = $this->actingAs($a->user)->get(route('reports.download', ['investor', 'portfolio']));
     $res->assertOk()->assertHeader('content-type', 'text/csv; charset=UTF-8');
@@ -24,7 +24,7 @@ it('includes principal and profit as separate statements after settlement', func
     $project = makeProject(['funding_target' => 10000000]);
     $contract = activeContract($project);
     $inv = makeInvestor(10000000);
-    app(InvestmentService::class)->invest($inv, $project, Money::minor(10000000), 'rs');
+    fund($inv, $project, 10000000, 'rs');
     closeOut($contract->fresh(), 2000000);
     app(SettlementService::class)->settle($contract->fresh(), Money::minor(2000000), User::factory()->create());
 
@@ -75,7 +75,7 @@ it('shows report centres and dashboard charts', function () {
 
 it('charts include the current period so today\'s activity is visible in every range', function (string $range) {
     $inv = makeInvestor(10000000);
-    app(InvestmentService::class)->invest($inv, makeProject(), Money::minor(1000000), 'chart-'.$range);
+    fund($inv, makeProject(), 1000000, 'chart-'.$range);
     $c = app(\App\Services\Reports\ChartData::class)->transactionsByBucket(['Invested' => [\App\Enums\TransactionType::Investment], 'Deposits' => [\App\Enums\TransactionType::Deposit]], $range);
     expect(count($c['labels']))->toBe(count($c['series']['Invested']))->and(array_sum($c['series']['Invested']))->toBe(1000000)->and(array_sum($c['series']['Deposits']))->toBe(10000000);
     $p = app(\App\Services\Reports\ChartData::class)->portfolio($inv->user_id, $range);

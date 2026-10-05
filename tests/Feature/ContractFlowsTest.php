@@ -36,8 +36,8 @@ function fundedMudarabah(): array
     $a = makeInvestor(20000000);
     $b = makeInvestor(20000000);
     $svc = app(InvestmentService::class);
-    $svc->invest($a, $project, Money::minor(6000000), 'm-a');
-    $svc->invest($b, $project, Money::minor(4000000), 'm-b');
+    fund($a, $project, 6000000, 'm-a');
+    fund($b, $project, 4000000, 'm-b');
 
     return [$contract->fresh(), $a, $b, $project->fresh()];
 }
@@ -90,7 +90,7 @@ it('musharakah: 700k investor + 300k business, 50/50 profit on 100k -> investor 
     $project = makeProject(['funding_target' => 70000000, 'contract_type' => ContractType::Musharakah]);
     $contract = activeContract($project);
     $inv = makeInvestor(80000000);
-    app(InvestmentService::class)->invest($inv, $project, Money::minor(70000000), 'msk');
+    fund($inv, $project, 70000000, 'msk');
 
     closeOut($contract->fresh(), 10000000);
     app(SettlementService::class)->settle($contract->fresh(), Money::minor(10000000), User::factory()->create());
@@ -102,7 +102,7 @@ it('musharakah: loss follows capital ratio (investor bears 70%)', function () {
     $project = makeProject(['funding_target' => 70000000, 'contract_type' => ContractType::Musharakah]);
     $contract = activeContract($project);
     $inv = makeInvestor(70000000);
-    app(InvestmentService::class)->invest($inv, $project, Money::minor(70000000), 'msk2');
+    fund($inv, $project, 70000000, 'msk2');
 
     closeOut($contract->fresh(), -10000000);
     app(SettlementService::class)->settle($contract->fresh(), Money::minor(-10000000), User::factory()->create());
@@ -194,7 +194,7 @@ it('murabaha: overdue installments are flagged', function () {
 it('murabaha contracts cannot be invested in like a pool or settled by profit-share', function () {
     [$contract] = murabahaContract();
     expect(fn () => app(SettlementService::class)->settle($contract, Money::minor(1), User::factory()->create()))->toThrow(FinancialException::class);
-    expect(fn () => app(InvestmentService::class)->invest(makeInvestor(10000000), makeProject(['contract_type' => ContractType::Murabaha]), Money::minor(1000000), 'mrb'))->toThrow(FinancialException::class, 'not an investment');
+    expect(fn () => fund(makeInvestor(10000000), makeProject(['contract_type' => ContractType::Murabaha]), 1000000, 'mrb'))->toThrow(FinancialException::class, 'not an investment');
 });
 
 /* ------------------------------ Project workflow ------------------------------ */
@@ -204,6 +204,7 @@ it('project workflow: submit -> shariah review -> approve -> publish, all audite
     $contract = activeContract($project);
     $contract->forceFill(['status' => ContractStatus::Draft])->save();
     withAqdTerms($contract);
+    \App\Models\ShariahReview::where('project_id', $project->id)->delete();   // the fixture's shortcut approval; this test uses the real review
     $admin = User::factory()->create();
     $wf = app(ProjectWorkflow::class);
 
@@ -213,7 +214,11 @@ it('project workflow: submit -> shariah review -> approve -> publish, all audite
     $wf->approve($project->fresh(), $admin);
     expect(fn () => $wf->publish($project->fresh(), $admin))->toThrow(FinancialException::class, 'Shariah');
 
-    $wf->recordShariahReview($project->fresh(), $admin, ShariahReviewStatus::Approved, 'Structure reviewed');
+    expect(fn () => $wf->recordShariahReview($project->fresh(), $admin, ShariahReviewStatus::Approved, 'Structure reviewed'))->toThrow(FinancialException::class, 'Only a Shariah reviewer');
+    $reviewer = aqdReviewer();
+    $wf->recordShariahReview($project->fresh(), $reviewer, ShariahReviewStatus::Approved, 'Structure reviewed');
+    expect(fn () => $wf->publish($project->fresh(), $admin))->toThrow(FinancialException::class, 'executed');   // the business has not signed the agreement
+    signMaster($project->fresh());
     $wf->publish($project->fresh(), $admin);
 
     expect($project->fresh()->status)->toBe(ProjectStatus::Funding)->and($project->fresh()->published_at)->not->toBeNull();

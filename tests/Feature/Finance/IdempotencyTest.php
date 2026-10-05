@@ -50,10 +50,10 @@ it('investments: same key + same request is safe; different amount or project is
     $p1 = makeProject();
     $p2 = makeProject();
     $svc = app(InvestmentService::class);
-    $a = $svc->invest($inv, $p1, Money::minor(1000000), 'inv-key');
-    expect($svc->invest($inv, $p1, Money::minor(1000000), 'inv-key')->id)->toBe($a->id);
-    expect(fn () => $svc->invest($inv, $p1, Money::minor(2000000), 'inv-key'))->toThrow(IdempotencyConflictException::class, CONFLICT);
-    expect(fn () => $svc->invest($inv, $p2, Money::minor(1000000), 'inv-key'))->toThrow(IdempotencyConflictException::class);
+    $a = fund($inv, $p1, 1000000, 'inv-key');
+    expect(fund($inv, $p1, 1000000, 'inv-key')->id)->toBe($a->id);
+    expect(fn () => fund($inv, $p1, 2000000, 'inv-key'))->toThrow(IdempotencyConflictException::class, CONFLICT);
+    expect(fn () => fund($inv, $p2, 1000000, 'inv-key'))->toThrow(IdempotencyConflictException::class);
     expect(Investment::count())->toBe(1)->and($p1->fresh()->funded_amount)->toBe(1000000)->and($p2->fresh()->funded_amount)->toBe(0);
 });
 
@@ -61,8 +61,8 @@ it('different keys are separate operations', function () {
     $inv = makeInvestor(10000000);
     $p = makeProject();
     $svc = app(InvestmentService::class);
-    $svc->invest($inv, $p, Money::minor(1000000), 'sep-1');
-    $svc->invest($inv, $p, Money::minor(1000000), 'sep-2');
+    fund($inv, $p, 1000000, 'sep-1');
+    fund($inv, $p, 1000000, 'sep-2');
     expect(Investment::count())->toBe(2)->and($p->fresh()->funded_amount)->toBe(2000000);
 });
 
@@ -98,7 +98,7 @@ it('murabaha payments: same key + same request is safe; different amount is reje
 it('settlements: same key + same request returns the original; a different result is rejected', function () {
     $project = makeProject(['funding_target' => 10000000]);
     $contract = activeContract($project);
-    app(InvestmentService::class)->invest(makeInvestor(20000000), $project, Money::minor(10000000), 'set-inv');
+    fund(makeInvestor(20000000), $project, 10000000, 'set-inv');
     $svc = app(SettlementService::class);
     $admin = User::factory()->create();
 
@@ -113,7 +113,7 @@ it('settlements: same key + same request returns the original; a different resul
 it('the database itself refuses a second settlement for a contract', function () {
     $project = makeProject(['funding_target' => 10000000]);
     $contract = activeContract($project);
-    app(InvestmentService::class)->invest(makeInvestor(20000000), $project, Money::minor(10000000), 'db-inv');
+    fund(makeInvestor(20000000), $project, 10000000, 'db-inv');
     closeOut($contract->fresh(), 100000);
     $s = app(SettlementService::class)->settle($contract->fresh(), Money::minor(100000), User::factory()->create());
     expect(fn () => \Illuminate\Support\Facades\DB::table('settlements')->insert(['reference' => 'DUP', 'contract_id' => $contract->id, 'project_id' => $project->id, 'status' => 'POSTED', 'currency' => 'BDT', 'created_at' => now(), 'updated_at' => now()]))

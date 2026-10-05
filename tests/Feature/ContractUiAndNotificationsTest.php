@@ -27,7 +27,7 @@ it('previews and posts a Mudarabah settlement from the admin contract page', fun
     $project = makeProject(['funding_target' => 10000000]);
     $contract = activeContract($project);
     $inv = makeInvestor(20000000);
-    app(InvestmentService::class)->invest($inv, $project, Money::minor(10000000), 'ui-m');
+    fund($inv, $project, 10000000, 'ui-m');
 
     closeOut($contract, 2000000);   // capital deployed and returned, profit remitted as interim proceeds
     $c = Livewire::test(ContractDetails::class, ['contract' => $contract->fresh()])
@@ -82,6 +82,6 @@ it('notifies the right people for the key events', function () {
     expect($project->business->user->notifications()->where('data->title', 'Revision requested')->exists())->toBeTrue();
 
     $open = makeProject();
-    app(InvestmentService::class)->invest($inv, $open, Money::minor(1000000), 'n-i');
+    fund($inv, $open, 1000000, 'n-i');
     expect($inv->user->notifications()->where('data->title', 'Investment confirmed')->exists())->toBeTrue();
 });
