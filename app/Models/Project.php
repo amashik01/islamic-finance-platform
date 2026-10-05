@@ -43,6 +43,12 @@ class Project extends Model
         return $this->belongsTo(User::class, 'reviewer_id');
     }
 
+    /** The appointed Wakil (agent) for this project's Wakalah arrangement. */
+    public function wakil(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'wakil_id');
+    }
+
     public function contract(): HasOne
     {
         return $this->hasOne(Contract::class);
