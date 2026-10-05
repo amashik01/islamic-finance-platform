@@ -33,6 +33,7 @@ class ProjectBuilder
         private MusharakahProfitCalculator $musharakah,
         private MurabahaSaleCalculator $murabaha,
         private AuditLogger $audit,
+        private \App\Services\Settings\SettingsService $settings,
     ) {}
 
     /** Creates or updates a draft. Only DRAFT / NEEDS_REVISION projects can be edited by the business. */
@@ -156,12 +157,12 @@ class ProjectBuilder
         if ($type === ContractType::Murabaha) {
             return $terms['funding_target'];
         }
-        $min = Money::parse($d['minimum_amount'] ?? (string) (config('finance.limits.min_investment') / 100));
+        $min = Money::parse($d['minimum_amount'] ?? (string) ($this->settings->minor('finance.min_investment') / 100));
         if ($min->minor > $terms['funding_target']) {
             throw new FinancialException('The minimum investment cannot exceed the funding target.');
         }
 
-        return max($min->minor, (int) config('finance.limits.min_investment'));
+        return max($min->minor, $this->settings->minor('finance.min_investment'));
     }
 
     private function writeTerms(Contract $contract, ContractType $type, array $t, array $d): void

@@ -104,12 +104,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'verified', 'role:AD
 
     // Arrive in later phases; access control is already enforced.
     Route::view('/reports', 'portal.reports', ['portal' => 'admin'])->middleware('permission:reports.view')->name('reports');
-    foreach (['settings' => ['Settings', 'settings.manage', 'Phase 14']] as $uri => [$title, $permission, $phase]) {
-        $route = Route::get("/$uri", Soon::class)->defaults('portal', 'admin')->defaults('title', $title)->defaults('phase', $phase)->name($uri);
-        if ($permission) {
-            $route->middleware("permission:$permission");
-        }
-    }
+    Route::get('/settings', \App\Livewire\Admin\Settings::class)->middleware('permission:settings.manage')->name('settings');
 });
 
 Route::middleware('auth')->get('/profile', function () {

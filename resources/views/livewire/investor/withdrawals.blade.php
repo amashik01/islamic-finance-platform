@@ -8,7 +8,7 @@
             <p class="text-sm text-ink-600">Withdrawable balance: <strong>{{ $balance->format() }}</strong></p>
             <div><label for="w-amount" class="label">Amount (BDT)</label><input id="w-amount" wire:model="amount" inputmode="decimal" class="input" autocomplete="off">
                 @error('amount')<p class="field-error" role="alert">{{ $message }}</p>@enderror
-                <p class="help">Minimum {{ Money::minor(config('finance.limits.min_withdrawal'))->format() }} · Maximum {{ Money::minor(config('finance.limits.max_withdrawal'))->format() }} per request.</p></div>
+                <p class="help">Minimum {{ Money::minor(app(\App\Services\Settings\SettingsService::class)->minor('finance.min_withdrawal'))->format() }} · Maximum {{ Money::minor(app(\App\Services\Settings\SettingsService::class)->minor('finance.max_withdrawal'))->format() }} per request.</p></div>
             <x-ui.button type="submit" class="w-full" loading="submit" loading-text="Submitting...">Request withdrawal</x-ui.button>
         </form>
     </x-ui.card>

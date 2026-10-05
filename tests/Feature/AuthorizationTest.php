@@ -117,3 +117,24 @@ it('rejects forged posts without a CSRF token', function () {
 
     $this->actingAs(makeInvestor()->user)->post('/logout')->assertStatus(419);
 });
+
+it('sends security headers and keeps authenticated pages out of caches', function () {
+    $res = $this->actingAs(makeInvestor()->user)->get('/investor');
+    $res->assertHeader('X-Frame-Options', 'SAMEORIGIN')->assertHeader('X-Content-Type-Options', 'nosniff')->assertHeader('Referrer-Policy')->assertHeader('Permissions-Policy');
+    expect($res->headers->get('Cache-Control'))->toContain('no-store');
+    $this->get('/')->assertHeader('X-Frame-Options', 'SAMEORIGIN');
+});
+
+it('does not leak technical details for unauthorised or missing resources', function () {
+    $this->actingAs(makeInvestor()->user)->get('/admin/ledger')->assertForbidden()->assertDontSee('Exception');
+    $this->get('/opportunities/does-not-exist')->assertNotFound();
+});
+
+it('throttles repeated failed logins', function () {
+    $u = \App\Models\User::factory()->create();
+    for ($i = 0; $i < 6; $i++) {
+        \Livewire\Volt\Volt::test('pages.auth.login')->set('form.email', $u->email)->set('form.password', 'wrong')->call('login');
+    }
+    \Livewire\Volt\Volt::test('pages.auth.login')->set('form.email', $u->email)->set('form.password', 'password')->call('login')->assertHasErrors('form.email');
+    $this->assertGuest();
+});

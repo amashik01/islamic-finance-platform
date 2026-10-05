@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 
 class InvestmentService
 {
-    public function __construct(private LedgerService $ledger, private WalletService $wallets, private \App\Services\Notify\Notifier $notify) {}
+    public function __construct(private LedgerService $ledger, private WalletService $wallets, private \App\Services\Notify\Notifier $notify, private \App\Services\Settings\SettingsService $settings) {}
 
     /** Available balance -> invested balance, atomically, once per idempotency key. */
     public function invest(Investor $investor, Project $project, Money $amount, string $idempotencyKey): Investment
@@ -48,7 +48,7 @@ class InvestmentService
             if ($project->contract_type === \App\Enums\ContractType::Murabaha) {
                 throw new FinancialException('Murabaha financing is not an investment product.');
             }
-            if ($amount->minor < $project->minimum_amount || $amount->minor < config('finance.limits.min_investment')) {
+            if ($amount->minor < $project->minimum_amount || $amount->minor < $this->settings->minor('finance.min_investment')) {
                 throw new FinancialException('The amount is below the minimum for this project.');
             }
             if ($amount->minor > $project->funding_target - $project->funded_amount) {

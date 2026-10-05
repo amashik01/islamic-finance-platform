@@ -22,7 +22,7 @@ use Illuminate\Support\Str;
 
 class WalletService
 {
-    public function __construct(private LedgerService $ledger, private AuditLogger $audit, private \App\Services\Notify\Notifier $notify) {}
+    public function __construct(private LedgerService $ledger, private AuditLogger $audit, private \App\Services\Notify\Notifier $notify, private \App\Services\Settings\SettingsService $settings) {}
 
     public function walletFor(User $user, string $currency = 'BDT'): Wallet
     {
@@ -135,8 +135,8 @@ class WalletService
             if (! $investor->bank_verified || ! $investor->bank_account_number) {
                 throw new FinancialException('Add and verify a bank account before withdrawing.');
             }
-            $min = Money::minor(config('finance.limits.min_withdrawal'), $amount->currency);
-            $max = Money::minor(config('finance.limits.max_withdrawal'), $amount->currency);
+            $min = Money::minor($this->settings->minor('finance.min_withdrawal'), $amount->currency);
+            $max = Money::minor($this->settings->minor('finance.max_withdrawal'), $amount->currency);
             if ($amount->lt($min)) {
                 throw new FinancialException('The minimum withdrawal is '.$min->format().'.');
             }
