@@ -29,9 +29,20 @@
     @if($type !== ContractType::Murabaha)
         @if($c->status === \App\Enums\ContractStatus::Active)
             @if($u->can('settlements.manage'))
-            <x-ui.card title="Business remittance" subtitle="A profitable settlement distributes only money the project holds. Record the actual profit the business remitted first.">
-                <div class="flex flex-wrap items-end gap-3"><div><label for="remit" class="label">Remitted profit (BDT)</label><input id="remit" wire:model="remitAmount" class="input" inputmode="decimal"></div>
-                <x-ui.button variant="secondary" wire:click="recordRemittance" loading="recordRemittance" loading-text="Recording...">Record remittance</x-ui.button></div>
+            <x-ui.card title="Capital deployment" subtitle="Funding is not deployment. Record the actual delivery of the committed capital to the business; this is the only point where cash leaves custody.">
+                @if(\App\Models\CapitalDeployment::where('contract_id', $c->id)->exists())
+                    <p class="text-sm text-ink-600">Capital has been deployed to the venture.</p>
+                @else
+                    <div class="flex flex-wrap items-end gap-3"><div><label for="delref" class="label">Delivery reference</label><input id="delref" wire:model="deliveryReference" class="input"></div>
+                    <x-ui.button variant="secondary" wire:click="deployCapital" loading="deployCapital" loading-text="Recording...">Record deployment</x-ui.button></div>
+                @endif
+            </x-ui.card>
+            <x-ui.card title="Business remittance" subtitle="Cash received from the business. Returned capital and interim proceeds are recorded separately; interim proceeds are not final profit until the result is settled.">
+                <div class="flex flex-wrap items-end gap-3">
+                    <div><label for="remc" class="label">Component</label><select id="remc" wire:model="remitComponent" class="input"><option value="CAPITAL_RETURN">Returned capital</option><option value="INTERIM_PROCEEDS">Interim proceeds</option></select></div>
+                    <div><label for="remit" class="label">Amount (BDT)</label><input id="remit" wire:model="remitAmount" class="input" inputmode="decimal"></div>
+                    <div><label for="remr" class="label">Receipt reference</label><input id="remr" wire:model="remitReceipt" class="input"></div>
+                    <x-ui.button variant="secondary" wire:click="recordRemittance" loading="recordRemittance" loading-text="Recording...">Record remittance</x-ui.button></div>
             </x-ui.card>
             @endif
             <x-ui.card title="Settle contract" subtitle="Records the actual result, returns principal and distributes profit as separate ledger transactions.">

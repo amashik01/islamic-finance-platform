@@ -64,15 +64,15 @@ it('D. repeating or over-funding the final amount never activates twice or dupli
     fund($inv, $project, 4000000);
     $last = fund($inv, $project, 6000000, 'final-key');
     $txCount = Transaction::count();
-    $funding = Transaction::where('type', 'PROJECT_FUNDING')->count();
 
     // The same request again returns the same investment and posts nothing.
     expect(fund($inv, $project, 6000000, 'final-key')->id)->toBe($last->id)->and(Transaction::count())->toBe($txCount);
     // Funding beyond the target is refused: the project is no longer accepting funds.
     expect(fn () => fund($inv, $project, 5000000))->toThrow(FinancialException::class, 'no longer accepting');
 
-    expect(Investment::count())->toBe(2)->and(Transaction::where('type', 'PROJECT_FUNDING')->count())->toBe($funding)
-        ->and(AuditLog::where('action', 'contract.activated')->count())->toBe(1)->and(pool(A::ProjectFunds, $project->id))->toBe(10000000);
+    expect(Investment::count())->toBe(2)->and(Transaction::where('type', 'INVESTMENT')->count())->toBe(2)
+        ->and(AuditLog::where('action', 'contract.activated')->count())->toBe(1)
+        ->and(Transaction::whereIn('type', ['PROJECT_FUNDING', 'CAPITAL_DEPLOYMENT'])->count())->toBe(0);   // funding and activation move no cash out of custody
 });
 
 it('E. a contract produced by the normal workflow can be settled (Mudarabah)', function () {
@@ -80,7 +80,7 @@ it('E. a contract produced by the normal workflow can be settled (Mudarabah)', f
     $a = makeInvestor(20000000);
     fund($a, $project, 10000000);
     $contract = $project->contract->fresh();
-    remit($contract, 2000000);
+    closeOut($contract, 2000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(2000000), User::factory()->create());
     expect($s->status->value)->toBe('POSTED')->and($contract->fresh()->status)->toBe(ContractStatus::Completed)->and($project->fresh()->status)->toBe(ProjectStatus::Completed);
     expect(reconcile(true)['passed'])->toBeTrue();
@@ -91,7 +91,7 @@ it('E2. a contract produced by the normal workflow can be settled (Musharakah)',
     fund(makeInvestor(80000000), $project, 70000000);
     recordBusinessCapital($project->contract);
     $contract = $project->contract->fresh();
-    remit($contract, 20000000);
+    closeOut($contract, 20000000);
     app(SettlementService::class)->settle($contract, Money::minor(20000000), User::factory()->create());
     expect($contract->fresh()->status)->toBe(ContractStatus::Completed);
     expect(reconcile(true)['passed'])->toBeTrue();

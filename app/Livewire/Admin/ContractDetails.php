@@ -47,6 +47,12 @@ class ContractDetails extends Component
 
     public string $remitAmount = '';
 
+    public string $remitComponent = 'CAPITAL_RETURN';
+
+    public string $remitReceipt = '';
+
+    public string $deliveryReference = '';
+
     public ?string $error = null;
 
     public ?string $notice = null;
@@ -121,16 +127,31 @@ class ContractDetails extends Component
         }
     }
 
-    /** The business remits the actual profit into the project pool before a profitable settlement. */
-    public function recordRemittance(SettlementService $settlements): void
+    /** Records the real delivery of the committed capital to the business (the only point cash leaves custody). */
+    public function deployCapital(\App\Services\Contract\CapitalDeploymentService $svc): void
     {
         $this->reset('error', 'notice');
         $this->authorize('manage', $this->contract);
         abort_unless(auth()->user()->can('settlements.manage'), 403);
         try {
-            $settlements->recordBusinessRemittance($this->contract, Money::parse($this->remitAmount), 'ui-remit-'.$this->contract->id.'-'.Str::uuid(), auth()->user());
-            $this->notice = 'Business remittance recorded.';
-            $this->reset('remitAmount');
+            $svc->deploy($this->contract, $svc->ventureCapital($this->contract), $this->deliveryReference, 'ui-deploy-'.$this->contract->id, auth()->user());
+            $this->notice = 'Capital deployment recorded.';
+            $this->reset('deliveryReference');
+        } catch (FinancialException $e) {
+            $this->error = $e->getMessage();
+        }
+    }
+
+    /** Cash received from the business: returned capital, or interim proceeds (not final profit). */
+    public function recordRemittance(\App\Services\Contract\VentureRemittanceService $svc): void
+    {
+        $this->reset('error', 'notice');
+        $this->authorize('manage', $this->contract);
+        abort_unless(auth()->user()->can('settlements.manage'), 403);
+        try {
+            $svc->record($this->contract, $this->remitComponent, Money::parse($this->remitAmount), $this->remitReceipt, 'ui-remit-'.$this->contract->id.'-'.Str::uuid(), auth()->user());
+            $this->notice = 'Remittance recorded.';
+            $this->reset('remitAmount', 'remitReceipt');
         } catch (\InvalidArgumentException) {
             $this->error = 'Enter a valid amount.';
         } catch (FinancialException $e) {

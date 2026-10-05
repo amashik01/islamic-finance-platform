@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 /** Test helper used by tests/Concurrency to race real database connections. Disabled in production. */
 class ProbeInvest extends Command
 {
-    protected $signature = 'finance:probe {action : invest|withdraw|settle|contribute|remit} {investor : investor id (invest/withdraw) or contract id (settle/contribute/remit)} {amount} {key} {project?}';
+    protected $signature = 'finance:probe {action : invest|withdraw|settle|contribute|deploy|return|interim} {investor : investor id (invest/withdraw) or contract id (settle/contribute/remit)} {amount} {key} {project?}';
 
     protected $description = 'Concurrency probe (testing only)';
 
@@ -24,13 +24,15 @@ class ProbeInvest extends Command
         try {
             $amount = Money::parse($this->argument('amount'));
             $action = $this->argument('action');
-            if (in_array($action, ['settle', 'contribute', 'remit'], true)) {
+            if (in_array($action, ['settle', 'contribute', 'deploy', 'return', 'interim'], true)) {
                 $contract = \App\Models\Contract::findOrFail($this->argument('investor'));
                 $admin = \App\Models\User::orderBy('id')->firstOrFail();
                 match ($action) {
                     'settle' => app(\App\Services\Settlement\SettlementService::class)->settle($contract, $amount, $admin, false, 'probe', $this->argument('key')),
                     'contribute' => app(\App\Services\Contract\MusharakahCapitalService::class)->recordBusinessContribution($contract, $amount, $this->argument('key'), $admin),
-                    'remit' => app(\App\Services\Settlement\SettlementService::class)->recordBusinessRemittance($contract, $amount, $this->argument('key'), $admin),
+                    'deploy' => app(\App\Services\Contract\CapitalDeploymentService::class)->deploy($contract, $amount, 'probe', $this->argument('key'), $admin),
+                    'return' => app(\App\Services\Contract\VentureRemittanceService::class)->record($contract, \App\Models\VentureRemittance::CAPITAL_RETURN, $amount, 'probe', $this->argument('key'), $admin),
+                    'interim' => app(\App\Services\Contract\VentureRemittanceService::class)->record($contract, \App\Models\VentureRemittance::INTERIM_PROCEEDS, $amount, 'probe', $this->argument('key'), $admin),
                 };
             } else {
                 $investor = Investor::findOrFail($this->argument('investor'));

@@ -108,7 +108,7 @@ class WalletService
             $amount = Money::minor($deposit->amount, $deposit->currency);
 
             $tx = $this->ledger->post(TransactionType::Deposit, [
-                ['account' => $this->ledger->systemAccount(A::PlatformCash, $deposit->currency), 'direction' => D::Debit, 'amount' => $amount],
+                ['account' => $this->ledger->systemAccount(A::CustodyCash, $deposit->currency), 'direction' => D::Debit, 'amount' => $amount],
                 ['account' => $this->account($wallet, A::InvestorAvailable), 'direction' => D::Credit, 'amount' => $amount],
             ], 'deposit:'.$deposit->id, ['user_id' => $deposit->user_id, 'description' => 'Deposit '.$deposit->reference, 'created_by' => $by->id]);
 
@@ -213,7 +213,7 @@ class WalletService
             if ($to === WithdrawalStatus::Paid) {
                 $this->ledger->post(TransactionType::Withdrawal, [
                     ['account' => $pending, 'direction' => D::Debit, 'amount' => $amount],
-                    ['account' => $this->ledger->systemAccount(A::PlatformCash, $withdrawal->currency), 'direction' => D::Credit, 'amount' => $amount],
+                    ['account' => $this->ledger->systemAccount(A::CustodyCash, $withdrawal->currency), 'direction' => D::Credit, 'amount' => $amount],
                 ], 'withdrawal-paid:'.$withdrawal->id, ['user_id' => $withdrawal->user_id, 'description' => 'Withdrawal paid '.$withdrawal->reference, 'created_by' => $by->id]);
             } elseif (in_array($to, [WithdrawalStatus::Rejected, WithdrawalStatus::Cancelled], true)) {
                 $this->ledger->post(TransactionType::Refund, [

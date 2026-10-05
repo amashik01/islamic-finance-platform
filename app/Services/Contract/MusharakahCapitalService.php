@@ -77,8 +77,8 @@ class MusharakahCapitalService
             }
 
             $tx = $this->ledger->post(TransactionType::MusharakahCapital, [
-                ['account' => $this->ledger->systemAccount(A::PlatformCash), 'direction' => D::Debit, 'amount' => $amount],
-                ['account' => $this->ledger->systemAccount(A::ProjectFunds, Currency::CODE, $contract->project_id), 'direction' => D::Credit, 'amount' => $amount],
+                ['account' => $this->ledger->systemAccount(A::CustodyCash), 'direction' => D::Debit, 'amount' => $amount],
+                ['account' => $this->ledger->systemAccount(A::BusinessCapital, Currency::CODE, $contract->project_id), 'direction' => D::Credit, 'amount' => $amount],
             ], 'musharakah-capital:'.$contract->id, ['project_id' => $contract->project_id, 'description' => 'Musharakah business capital — '.$contract->contract_number, 'created_by' => $by->id]);
 
             $c = new MusharakahCapitalContribution([

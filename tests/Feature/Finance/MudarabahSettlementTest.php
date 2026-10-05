@@ -36,7 +36,7 @@ function acct(string $type, ?int $projectId): int
 
 it('records investor principal, investor profit AND the business profit share as separate items and ledger entries', function () {
     [$contract, $a, $b, $project] = mudarabahFixture();
-    remit($contract, 2000000);
+    closeOut($contract, 2000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(2000000), User::factory()->create());
 
     $sum = fn (Item $t) => (int) $s->items->where('item_type', $t)->sum('amount');
@@ -55,7 +55,7 @@ it('records investor principal, investor profit AND the business profit share as
 
 it('returns principal and profit pro rata to investors', function () {
     [$contract, $a, $b] = mudarabahFixture();
-    remit($contract, 2000000);
+    closeOut($contract, 2000000);
     app(SettlementService::class)->settle($contract, Money::minor(2000000), User::factory()->create());
     $w = app(WalletService::class);
     expect($w->balances($w->walletFor($a->user))['available']->minor)->toBe(14000000 + 6000000 + 840000)
@@ -65,6 +65,7 @@ it('returns principal and profit pro rata to investors', function () {
 
 it('ordinary business loss falls on capital and creates no manager liability or recovery', function () {
     [$contract, $a, $b, $project] = mudarabahFixture();
+    closeOut($contract, -1000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(-1000000), User::factory()->create());
 
     expect($s->items->where('item_type', Item::InvestmentProfit)->count())->toBe(0)->and($s->items->where('item_type', Item::BusinessProfitShare)->count())->toBe(0)
@@ -77,14 +78,15 @@ it('ordinary business loss falls on capital and creates no manager liability or 
 
 it('documented fault records the recoverable amount, not just a status', function () {
     [$contract, $a, $b, $project] = mudarabahFixture();
+    closeOut($contract, -1000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(-1000000), User::factory()->create(), managerAtFault: true, reason: 'Funds diverted to unrelated purchases (audit ref A-12)');
 
     $recovery = ManagerRecovery::first();
     expect($recovery->amount)->toBe(1000000)->and($recovery->recovered_amount)->toBe(0)->and($recovery->outstanding())->toBe(1000000)
-        ->and($recovery->status)->toBe(ManagerRecoveryStatus::Open)->and($recovery->settlement_id)->toBe($s->id)->and($recovery->business_id)->toBe($project->business_id)
+        ->and($recovery->status)->toBe(ManagerRecoveryStatus::Suspected)->and($recovery->settlement_id)->toBe($s->id)->and($recovery->business_id)->toBe($project->business_id)
         ->and($recovery->reason)->toContain('diverted')->and($recovery->currency)->toBe('BDT');
     $liability = $s->items->firstWhere('item_type', Item::ManagerLiability);
-    expect($liability->amount)->toBe(1000000)->and($contract->fresh()->recovery_status)->toBe(RecoveryStatus::InRecovery);
+    expect($liability->amount)->toBe(1000000)->and($contract->fresh()->recovery_status)->toBe(RecoveryStatus::None);
     expect(\App\Models\AuditLog::where('action', 'settlement.posted')->first()->new_values['manager_liability'])->toBe(1000000);
     expect(reconcile(true)['passed'])->toBeTrue();
 });
@@ -98,7 +100,7 @@ it('refuses to attribute a loss to the manager without a documented reason', fun
 
 it('a profitable settlement never creates a recovery even if fault is flagged', function () {
     [$contract] = mudarabahFixture();
-    remit($contract, 2000000);
+    closeOut($contract, 2000000);
     app(SettlementService::class)->settle($contract, Money::minor(2000000), User::factory()->create(), managerAtFault: true, reason: 'n/a');
     expect(ManagerRecovery::count())->toBe(0);
 });
@@ -107,7 +109,7 @@ it('settlement rolls back entirely if any step fails', function () {
     [$contract, $a] = mudarabahFixture();
     // Corrupt: wipe the investor's invested bucket so the principal return would overdraw it.
     corrupt('ledger_accounts', ['type' => A::InvestorInvested->value], ['balance' => 0]);
-    remit($contract, 2000000);
+    closeOut($contract, 2000000);
     $txBefore = \App\Models\Transaction::count();
     expect(fn () => app(SettlementService::class)->settle($contract, Money::minor(2000000), User::factory()->create()))->toThrow(FinancialException::class);
     expect(\App\Models\Transaction::count())->toBe($txBefore)->and(\App\Models\Settlement::count())->toBe(0)->and($contract->fresh()->status)->toBe(ContractStatus::Active);

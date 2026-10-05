@@ -25,7 +25,7 @@ it('includes principal and profit as separate statements after settlement', func
     $contract = activeContract($project);
     $inv = makeInvestor(10000000);
     app(InvestmentService::class)->invest($inv, $project, Money::minor(10000000), 'rs');
-    remit($contract->fresh(), 2000000);
+    closeOut($contract->fresh(), 2000000);
     app(SettlementService::class)->settle($contract->fresh(), Money::minor(2000000), User::factory()->create());
 
     $profit = $this->actingAs($inv->user)->get(route('reports.download', ['investor', 'profit']))->streamedContent();

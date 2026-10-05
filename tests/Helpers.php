@@ -92,10 +92,49 @@ function activeContract(\App\Models\Project $project, array $terms = []): \App\M
     return $c->fresh();
 }
 
-/** The business remits the actual profit into the project pool (required before a profitable settlement). */
+/** The business remits INTERIM PROCEEDS (an advance pending the final determination; not final profit). */
 function remit(\App\Models\Contract $contract, int $minor): void
 {
-    app(\App\Services\Settlement\SettlementService::class)->recordBusinessRemittance($contract->fresh(), \App\Support\Money\Money::minor($minor), 'remit-'.uniqid(), \App\Models\User::factory()->create());
+    app(\App\Services\Contract\VentureRemittanceService::class)->record($contract->fresh(), \App\Models\VentureRemittance::INTERIM_PROCEEDS, \App\Support\Money\Money::minor($minor), 'receipt-'.uniqid(), 'remit-'.uniqid(), \App\Models\User::factory()->create());
+}
+
+/** The business returns capital value. */
+function returnCapital(\App\Models\Contract $contract, int $minor): void
+{
+    app(\App\Services\Contract\VentureRemittanceService::class)->record($contract->fresh(), \App\Models\VentureRemittance::CAPITAL_RETURN, \App\Support\Money\Money::minor($minor), 'receipt-'.uniqid(), 'ret-'.uniqid(), \App\Models\User::factory()->create());
+}
+
+/** Records the real delivery of the committed capital to the business. */
+function deployCapital(\App\Models\Contract $contract): \App\Models\CapitalDeployment
+{
+    $svc = app(\App\Services\Contract\CapitalDeploymentService::class);
+    $c = $contract->fresh();
+
+    return $svc->deploy($c, $svc->ventureCapital($c), 'DELIVERY-'.uniqid(), 'deploy-'.$c->id, \App\Models\User::factory()->create());
+}
+
+/**
+ * The recorded events that imply a final result of $netMinor: deploy (if not yet), return the capital that is left, and for a
+ * profit remit it as interim proceeds. After this, SettlementService::settle($contract, $netMinor) is consistent with the books.
+ */
+function closeOut(\App\Models\Contract $contract, int $netMinor): void
+{
+    $c = $contract->fresh();
+    if (! \App\Models\CapitalDeployment::where('contract_id', $c->id)->exists()) {
+        deployCapital($c);
+    }
+    $venture = (int) \App\Models\CapitalDeployment::where('contract_id', $c->id)->value('amount');
+    $back = $netMinor > 0 ? $venture : $venture + $netMinor;
+    $back > 0 && returnCapital($c, $back);
+    $netMinor > 0 && remit($c, $netMinor);
+}
+
+/** closeOut + settle in one call, for tests whose subject is the settlement itself. */
+function settleNow(\App\Models\Contract $contract, int $netMinor, bool $fault = false, ?string $reason = null): \App\Models\Settlement
+{
+    closeOut($contract, $netMinor);
+
+    return app(\App\Services\Settlement\SettlementService::class)->settle($contract->fresh(), \App\Support\Money\Money::minor($netMinor), \App\Models\User::factory()->create(), $fault, $reason);
 }
 
 /** Raw DB write that bypasses model guards. Returns false when a database CHECK constraint refused it (MySQL). */

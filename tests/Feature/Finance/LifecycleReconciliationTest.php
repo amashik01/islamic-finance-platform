@@ -66,6 +66,7 @@ it('detects a completed contract with no settlement', function () {
 it('detects an unexplained ProjectFunds balance (cached balance edited behind the ledger)', function () {
     $p = realProject(ContractType::Mudarabah);
     fund(makeInvestor(20000000), $p, 4000000);
+    app(\App\Services\Ledger\LedgerService::class)->systemAccount(A::ProjectFunds, 'BDT', $p->id);
     corrupt('ledger_accounts', ['type' => 'PROJECT_FUNDS', 'project_id' => $p->id], ['balance' => 9000000]);
     $r = reconcile();
     expect($r['passed'])->toBeFalse();
@@ -74,6 +75,7 @@ it('detects an unexplained ProjectFunds balance (cached balance edited behind th
 it('detects negative ProjectFunds and reports the project id', function () {
     $p = realProject(ContractType::Mudarabah);
     fund(makeInvestor(20000000), $p, 4000000);
+    app(\App\Services\Ledger\LedgerService::class)->systemAccount(A::ProjectFunds, 'BDT', $p->id);
     if (! corrupt('ledger_accounts', ['type' => 'PROJECT_FUNDS', 'project_id' => $p->id], ['balance' => -1])) {
         $this->markTestSkipped('Database constraint prevented the corruption.');
     }
@@ -85,6 +87,7 @@ it('detects a settlement item that no longer matches the contributions (Musharak
     fund(makeInvestor(80000000), $p, 70000000);
     $c = $p->contract->fresh();
     recordBusinessCapital($c);
+    closeOut($c->fresh(), -10000000);
     $s = app(SettlementService::class)->settle($c->fresh(), Money::minor(-10000000), User::factory()->create());
     $item = $s->items()->where('item_type', 'BUSINESS_CAPITAL_LOSS')->firstOrFail();
     corrupt('settlement_items', ['id' => $item->id], ['amount' => -1000000]);

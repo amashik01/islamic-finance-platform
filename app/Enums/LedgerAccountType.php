@@ -15,7 +15,10 @@ enum LedgerAccountType: string
     case MurabahaInventory = 'MURABAHA_INVENTORY';
     case MurabahaReceivable = 'MURABAHA_RECEIVABLE';
     case MurabahaSaleProfit = 'MURABAHA_SALE_PROFIT';
-    case CapitalDeployed = 'CAPITAL_DEPLOYED';
+    case CapitalDeployed = 'CAPITAL_DEPLOYED';   // LEGACY: gross-up pair account of the earlier funding design; no new postings
+    case CustodyCash = 'CUSTODY_CASH';
+    case VentureCapital = 'VENTURE_CAPITAL';
+    case BusinessCapital = 'BUSINESS_CAPITAL';
 
     public function label(): string
     {
@@ -25,13 +28,16 @@ enum LedgerAccountType: string
             self::InvestorPending => 'Investor pending',
             self::ProjectFunds => 'Project funds',
             self::BusinessFunds => 'Business funds',
-            self::PlatformCash => 'Platform cash',
+            self::PlatformCash => 'Platform own funds',
             self::PlatformFees => 'Platform fees',
             self::Clearing => 'Clearing',
             self::MurabahaInventory => 'Murabaha inventory (owned asset)',
             self::MurabahaReceivable => 'Murabaha receivable',
             self::MurabahaSaleProfit => 'Murabaha sale profit',
-            self::CapitalDeployed => 'Capital deployed to project',
+            self::CapitalDeployed => 'Capital deployed (legacy)',
+            self::CustodyCash => 'Client custody cash',
+            self::VentureCapital => 'Venture capital (at cost)',
+            self::BusinessCapital => 'Business partner capital',
         };
     }
 
@@ -42,9 +48,15 @@ enum LedgerAccountType: string
     public function normalSide(): string
     {
         return match ($this) {
-            self::PlatformCash, self::MurabahaInventory, self::MurabahaReceivable, self::CapitalDeployed => 'DEBIT',
+            self::PlatformCash, self::CustodyCash, self::VentureCapital, self::MurabahaInventory, self::MurabahaReceivable, self::CapitalDeployed => 'DEBIT',
             default => 'CREDIT',
         };
+    }
+
+    /** Retired from new flows; kept so historical entries stay readable. */
+    public function isLegacy(): bool
+    {
+        return $this === self::CapitalDeployed;
     }
 
     /** @return array<string, string> value => label */

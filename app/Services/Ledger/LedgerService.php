@@ -29,6 +29,7 @@ class LedgerService
         LedgerAccountType::InvestorAvailable, LedgerAccountType::InvestorInvested, LedgerAccountType::InvestorPending,
         LedgerAccountType::MurabahaReceivable, LedgerAccountType::MurabahaInventory,
         LedgerAccountType::ProjectFunds, LedgerAccountType::CapitalDeployed,   // the project pool can never distribute money it does not hold
+        LedgerAccountType::CustodyCash, LedgerAccountType::VentureCapital, LedgerAccountType::BusinessCapital,   // custody cannot be overdrawn; capital cannot be written down below zero
     ];
 
     public function systemAccount(LedgerAccountType $type, string $currency = Currency::CODE, ?int $projectId = null): LedgerAccount
@@ -116,6 +117,8 @@ class LedgerService
                     throw new FinancialException(match ($account->type) {
                         LedgerAccountType::MurabahaReceivable => 'The payment exceeds the outstanding receivable.',
                         LedgerAccountType::ProjectFunds, LedgerAccountType::CapitalDeployed => 'The project does not hold enough funds for this movement.',
+                        LedgerAccountType::CustodyCash => 'The platform does not hold enough client custody cash for this movement.',
+                        LedgerAccountType::VentureCapital, LedgerAccountType::BusinessCapital => 'The venture capital cannot go below zero.',
                         default => 'Insufficient available balance.',
                     });
                 }

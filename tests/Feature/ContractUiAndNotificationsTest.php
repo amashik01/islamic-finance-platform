@@ -29,7 +29,7 @@ it('previews and posts a Mudarabah settlement from the admin contract page', fun
     $inv = makeInvestor(20000000);
     app(InvestmentService::class)->invest($inv, $project, Money::minor(10000000), 'ui-m');
 
-    remit($contract, 2000000);   // the business remits the actual profit first
+    closeOut($contract, 2000000);   // capital deployed and returned, profit remitted as interim proceeds
     $c = Livewire::test(ContractDetails::class, ['contract' => $contract->fresh()])
         ->set('netResult', '20000')->assertSee('BDT 14,000.00')->assertSee('BDT 100,000.00')->assertSee('BDT 6,000.00');
     $c->call('settle')->assertSet('error', 'Record a reason or reference for this settlement.');

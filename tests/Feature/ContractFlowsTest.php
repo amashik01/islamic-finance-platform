@@ -46,7 +46,7 @@ it('mudarabah: 100k capital, 20k profit, 70/30 -> investors get principal plus 1
     [$contract, $a, $b] = fundedMudarabah();
     $admin = User::factory()->create();
 
-    remit($contract, 2000000);
+    closeOut($contract, 2000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(2000000), $admin);
 
     // A: 60% of 14,000 = 8,400 ; B: 40% = 5,600. Principal back in full.
@@ -63,13 +63,14 @@ it('mudarabah: 100k capital, 20k profit, 70/30 -> investors get principal plus 1
 it('mudarabah: cannot be settled twice', function () {
     [$contract] = fundedMudarabah();
     $svc = app(SettlementService::class);
-    remit($contract, 100000);
+    closeOut($contract, 100000);
     $svc->settle($contract, Money::minor(100000), User::factory()->create());
-    $svc->settle($contract->fresh(), Money::minor(100000), User::factory()->create());
-})->throws(FinancialException::class);
+    expect(fn () => $svc->settle($contract->fresh(), Money::minor(100000), User::factory()->create()))->toThrow(FinancialException::class, 'active contract');
+});
 
 it('mudarabah: a loss reduces returned principal and never creates profit', function () {
     [$contract, $a, $b] = fundedMudarabah();
+    closeOut($contract, -1000000);
     app(SettlementService::class)->settle($contract, Money::minor(-1000000), User::factory()->create());
 
     // 10% loss on 60k = 6k, on 40k = 4k
@@ -79,8 +80,10 @@ it('mudarabah: a loss reduces returned principal and never creates profit', func
 
 it('mudarabah: loss caused by manager fault is flagged for recovery', function () {
     [$contract] = fundedMudarabah();
+    closeOut($contract, -1000000);
     app(SettlementService::class)->settle($contract, Money::minor(-1000000), User::factory()->create(), managerAtFault: true, reason: 'Funds misused');
-    expect($contract->fresh()->recovery_status)->toBe(RecoveryStatus::InRecovery);
+    expect($contract->fresh()->recovery_status)->toBe(RecoveryStatus::None)   // an allegation is not yet a recovery
+        ->and(\App\Models\ManagerRecovery::first()->status)->toBe(\App\Enums\ManagerRecoveryStatus::Suspected);
 });
 
 it('musharakah: 700k investor + 300k business, 50/50 profit on 100k -> investor profit 50k, capital returned', function () {
@@ -89,7 +92,7 @@ it('musharakah: 700k investor + 300k business, 50/50 profit on 100k -> investor 
     $inv = makeInvestor(80000000);
     app(InvestmentService::class)->invest($inv, $project, Money::minor(70000000), 'msk');
 
-    remit($contract->fresh(), 10000000);
+    closeOut($contract->fresh(), 10000000);
     app(SettlementService::class)->settle($contract->fresh(), Money::minor(10000000), User::factory()->create());
 
     expect(bal($inv)['available'])->toBe(10000000 + 70000000 + 5000000)->and(bal($inv)['invested'])->toBe(0);
@@ -101,6 +104,7 @@ it('musharakah: loss follows capital ratio (investor bears 70%)', function () {
     $inv = makeInvestor(70000000);
     app(InvestmentService::class)->invest($inv, $project, Money::minor(70000000), 'msk2');
 
+    closeOut($contract->fresh(), -10000000);
     app(SettlementService::class)->settle($contract->fresh(), Money::minor(-10000000), User::factory()->create());
     expect(bal($inv)['available'])->toBe(70000000 - 7000000);
 });

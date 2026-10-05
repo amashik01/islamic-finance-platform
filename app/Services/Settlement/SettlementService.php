@@ -33,10 +33,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Settles Mudarabah / Musharakah contracts in BDT. Settlement is an explicit financial event that records,
- * as separate ledger transactions and separate settlement items:
- *   investor principal return, investor profit share, business profit share, investor loss, and
- *   (Mudarabah only, and only for documented fault) the amount recoverable from the manager.
+ * Settles Mudarabah / Musharakah contracts in BDT. Settlement is an explicit financial event that:
+ *   - verifies the capital was deployed and that the recorded remittances (capital returned + interim proceeds) imply exactly
+ *     the result being settled (result = capital returned + interim proceeds - capital deployed);
+ *   - recognises an ordinary loss against the VENTURE CAPITAL asset and the capital partners' claims (no debt of any party,
+ *     no cash movement, never Clearing);
+ *   - makes the remaining capital withdrawable / payable, and distributes the agreed shares of actual profit from the
+ *     interim proceeds held in ProjectFunds;
+ *   - opens a SUSPECTED manager recovery (memo only, no ledger asset) when fault is alleged.
  */
 class SettlementService
 {
@@ -48,31 +52,6 @@ class SettlementService
         private AuditLogger $audit,
         private \App\Services\Notify\Notifier $notify,
     ) {}
-
-    /**
-     * The business remits the actual proceeds (profit) into the project pool: Dr Platform cash / Cr Project funds.
-     * Settlement distributes only money the pool really holds, so this must precede a profitable settlement.
-     */
-    public function recordBusinessRemittance(Contract $contract, Money $amount, string $idempotencyKey, ?User $by = null)
-    {
-        Currency::require($contract->currency, 'Contract currency');
-        if (! in_array($contract->contract_type, [ContractType::Mudarabah, ContractType::Musharakah], true)) {
-            throw new FinancialException('Only Mudarabah and Musharakah contracts take a business remittance.');
-        }
-        if (! $amount->isPositive()) {
-            throw new FinancialException('Enter a remittance amount greater than zero.');
-        }
-        if ($contract->fresh()->status !== ContractStatus::Active) {
-            throw new FinancialException('A remittance can only be recorded for an active contract.');
-        }
-        $tx = $this->ledger->post(TransactionType::BusinessRemittance, [
-            ['account' => $this->ledger->systemAccount(A::PlatformCash), 'direction' => D::Debit, 'amount' => $amount],
-            ['account' => $this->projectFunds($contract), 'direction' => D::Credit, 'amount' => $amount],
-        ], $idempotencyKey, ['project_id' => $contract->project_id, 'description' => 'Business remittance — '.$contract->contract_number, 'created_by' => $by?->id]);
-        $this->audit->record('contract.remittance_recorded', $contract, null, ['amount' => $amount->minor, 'transaction_id' => $tx->id]);
-
-        return $tx;
-    }
 
     /**
      * @param  Money  $netResult  signed actual net profit (positive) or loss (negative) for the whole project
@@ -116,6 +95,10 @@ class SettlementService
                 throw new FinancialException('This contract has already been settled.');
             }
 
+            if ($managerAtFault && $netResult->isNegative() && blank($reason)) {
+                throw new FinancialException('Record the documented negligence, misconduct or breach before attributing a loss to the manager.');
+            }
+
             $investments = Investment::where('project_id', $contract->project_id)
                 ->whereIn('status', [InvestmentStatus::Confirmed, InvestmentStatus::Active])->lockForUpdate()->orderBy('id')->get();
             if ($investments->isEmpty()) {
@@ -128,15 +111,27 @@ class SettlementService
             if ($contract->contract_type === ContractType::Musharakah) {
                 $bizCapital = $this->verifiedBusinessCapital($contract, $capital);
             }
+            $venture = $capital->add($bizCapital);
+
+            // The venture must have received the capital, and the recorded remittances must imply exactly this result.
+            $deployed = \App\Models\CapitalDeployment::where('contract_id', $contract->id)->first();
+            if (! $deployed || $deployed->amount !== $venture->minor) {
+                throw new FinancialException('The capital has not been deployed to the venture. Record the capital deployment before settling.');
+            }
+            $returned = (int) \App\Models\VentureRemittance::where('contract_id', $contract->id)->where('component', \App\Models\VentureRemittance::CAPITAL_RETURN)->sum('amount');
+            $interim = (int) \App\Models\VentureRemittance::where('contract_id', $contract->id)->where('component', \App\Models\VentureRemittance::INTERIM_PROCEEDS)->sum('amount');
+            $implied = $returned + $interim - $venture->minor;
+            if ($implied !== $netResult->minor) {
+                throw new FinancialException('The recorded remittances imply a result of '.Money::minor($implied)->format().', not '.$netResult->format().'. Record the capital returned and the interim proceeds first (capital returned '.Money::minor($returned)->format().', interim proceeds '.Money::minor($interim)->format().').');
+            }
+            if ($netResult->isPositive() && $returned !== $venture->minor) {
+                throw new FinancialException('The deployed capital has not been fully returned. Record the capital returned before settling a profit.');
+            }
+            if (! $netResult->isPositive() && $interim > 0) {
+                throw new FinancialException('Interim proceeds were received but the final result is not a profit. Applying advances against capital needs a qualified accounting and Shariah review and is not automated.');
+            }
 
             $r = $this->pools($contract, $capital, $bizCapital, $netResult, $managerAtFault);
-
-            // Settlement distributes only funds that exist: capital held + remitted proceeds must cover every payout.
-            $distribution = $capital->add($bizCapital)->add($r['investor_profit'])->add($r['business_profit']);
-            $poolBalance = (int) \App\Models\LedgerAccount::whereKey($this->projectFunds($contract)->id)->lockForUpdate()->value('balance');
-            if ($poolBalance < $distribution->minor) {
-                throw new FinancialException('The project does not hold enough funds to settle. Record the business remittance of the actual profit first (short by '.Money::minor($distribution->minor - $poolBalance)->format().').');
-            }
 
             $settlement = new Settlement(['reference' => 'STL-'.strtoupper(Str::random(8)), 'contract_id' => $contract->id, 'project_id' => $contract->project_id, 'currency' => Currency::CODE, 'actual_net_result' => $netResult->minor, 'created_by' => $by->id]);
             $settlement->forceFill(['status' => SettlementStatus::Draft, 'approved_by' => $by->id, 'idempotency_key' => $key, 'request_hash' => $hash])->save();
@@ -145,59 +140,57 @@ class SettlementService
             $principals = $r['principal_pool']->allocate($weights);
             $profits = $r['investor_profit']->isZero() ? array_map(fn () => Money::zero(), $weights) : $r['investor_profit']->allocate($weights);
             $projectFunds = $this->projectFunds($contract);
+            $ventureCapital = $this->ledger->systemAccount(A::VentureCapital, Currency::CODE, $contract->project_id);
+            $meta = fn (array $more = []) => ['project_id' => $contract->project_id] + $more;
 
             foreach ($investments as $i => $inv) {
                 $wallet = $this->wallets->walletFor($inv->investor->user);
                 $invested = Money::minor($inv->amount);
-                $returned = $principals[$i];
-                $loss = $invested->subtract($returned);
+                $kept = $principals[$i];
+                $loss = $invested->subtract($kept);
 
-                if ($returned->isPositive()) {
-                    $tx = $this->ledger->post(TransactionType::PrincipalReturn, [
-                        ['account' => $this->wallets->account($wallet, A::InvestorInvested), 'direction' => D::Debit, 'amount' => $returned],
-                        ['account' => $this->wallets->account($wallet, A::InvestorAvailable), 'direction' => D::Credit, 'amount' => $returned],
-                    ], "settlement:{$settlement->id}:principal:{$inv->id}", ['user_id' => $inv->investor->user_id, 'project_id' => $contract->project_id, 'investment_id' => $inv->id, 'description' => 'Principal returned — '.$contract->contract_number]);
-                    $settlement->items()->forceCreate(['investment_id' => $inv->id, 'user_id' => $inv->investor->user_id, 'item_type' => Item::Principal, 'amount' => $returned->minor, 'transaction_id' => $tx->id]);
-                }
                 if ($loss->isPositive()) {
-                    $tx = $this->ledger->post(TransactionType::Adjustment, [
+                    // Ordinary loss: the investor's capital at risk and the venture asset are written down together.
+                    $tx = $this->ledger->post(TransactionType::LossRecognition, [
                         ['account' => $this->wallets->account($wallet, A::InvestorInvested), 'direction' => D::Debit, 'amount' => $loss],
-                        ['account' => $this->ledger->systemAccount(A::Clearing, Currency::CODE, $contract->project_id), 'direction' => D::Credit, 'amount' => $loss],
-                    ], "settlement:{$settlement->id}:loss:{$inv->id}", ['user_id' => $inv->investor->user_id, 'project_id' => $contract->project_id, 'investment_id' => $inv->id, 'description' => 'Loss allocated — '.$contract->contract_number]);
+                        ['account' => $ventureCapital, 'direction' => D::Credit, 'amount' => $loss],
+                    ], "settlement:{$settlement->id}:loss:{$inv->id}", $meta(['user_id' => $inv->investor->user_id, 'investment_id' => $inv->id, 'description' => 'Capital loss recognised — '.$contract->contract_number]));
                     $settlement->items()->forceCreate(['investment_id' => $inv->id, 'user_id' => $inv->investor->user_id, 'item_type' => Item::Adjustment, 'amount' => -$loss->minor, 'transaction_id' => $tx->id]);
                 }
-                // The invested capital leaves the project pool (returned or lost); mirrors the funding leg.
-                $this->ledger->post(TransactionType::CapitalRelease, [
-                    ['account' => $projectFunds, 'direction' => D::Debit, 'amount' => $invested],
-                    ['account' => $this->ledger->systemAccount(A::CapitalDeployed, Currency::CODE, $contract->project_id), 'direction' => D::Credit, 'amount' => $invested],
-                ], "settlement:{$settlement->id}:release:{$inv->id}", ['project_id' => $contract->project_id, 'investment_id' => $inv->id, 'description' => 'Project capital release — '.$contract->contract_number]);
+                if ($kept->isPositive()) {
+                    $tx = $this->ledger->post(TransactionType::PrincipalReturn, [
+                        ['account' => $this->wallets->account($wallet, A::InvestorInvested), 'direction' => D::Debit, 'amount' => $kept],
+                        ['account' => $this->wallets->account($wallet, A::InvestorAvailable), 'direction' => D::Credit, 'amount' => $kept],
+                    ], "settlement:{$settlement->id}:principal:{$inv->id}", $meta(['user_id' => $inv->investor->user_id, 'investment_id' => $inv->id, 'description' => 'Capital recovered — '.$contract->contract_number]));
+                    $settlement->items()->forceCreate(['investment_id' => $inv->id, 'user_id' => $inv->investor->user_id, 'item_type' => Item::Principal, 'amount' => $kept->minor, 'transaction_id' => $tx->id]);
+                }
                 if ($profits[$i]->isPositive()) {
                     $tx = $this->ledger->post(TransactionType::ProfitDistribution, [
                         ['account' => $projectFunds, 'direction' => D::Debit, 'amount' => $profits[$i]],
                         ['account' => $this->wallets->account($wallet, A::InvestorAvailable), 'direction' => D::Credit, 'amount' => $profits[$i]],
-                    ], "settlement:{$settlement->id}:profit:{$inv->id}", ['user_id' => $inv->investor->user_id, 'project_id' => $contract->project_id, 'investment_id' => $inv->id, 'description' => 'Profit distribution — '.$contract->contract_number]);
+                    ], "settlement:{$settlement->id}:profit:{$inv->id}", $meta(['user_id' => $inv->investor->user_id, 'investment_id' => $inv->id, 'description' => 'Profit distribution — '.$contract->contract_number]));
                     $settlement->items()->forceCreate(['investment_id' => $inv->id, 'user_id' => $inv->investor->user_id, 'item_type' => Item::InvestmentProfit, 'amount' => $profits[$i]->minor, 'transaction_id' => $tx->id]);
                 }
                 $inv->forceFill(['status' => InvestmentStatus::Completed])->save();
-                $this->notify->to($inv->investor->user, 'Contract settled', 'Principal returned: '.$returned->format().'. Profit distributed: '.$profits[$i]->format().'.', 'success', route('investor.investments.show', $inv));
+                $this->notify->to($inv->investor->user, 'Contract settled', 'Capital recovered: '.$kept->format().'. Profit distributed: '.$profits[$i]->format().'.', 'success', route('investor.investments.show', $inv));
             }
 
-            // Musharakah: the business partner's own capital is returned (less its share of any loss) from the pool.
+            // Musharakah: the business partner's capital absorbs its capital-ratio share of loss; the rest becomes payable.
             if ($contract->contract_type === ContractType::Musharakah) {
+                $businessAccount = $this->ledger->systemAccount(A::BusinessCapital, Currency::CODE, $contract->project_id);
+                if ($r['business_loss']->isPositive()) {
+                    $tx = $this->ledger->post(TransactionType::LossRecognition, [
+                        ['account' => $businessAccount, 'direction' => D::Debit, 'amount' => $r['business_loss']],
+                        ['account' => $ventureCapital, 'direction' => D::Credit, 'amount' => $r['business_loss']],
+                    ], "settlement:{$settlement->id}:business-loss", $meta(['user_id' => $business->user_id, 'description' => 'Business share of capital loss — '.$contract->contract_number]));
+                    $settlement->items()->forceCreate(['user_id' => $business->user_id, 'item_type' => Item::BusinessCapitalLoss, 'amount' => -$r['business_loss']->minor, 'transaction_id' => $tx->id]);
+                }
                 if ($r['business_capital_return']->isPositive()) {
                     $tx = $this->ledger->post(TransactionType::BusinessCapitalReturn, [
-                        ['account' => $projectFunds, 'direction' => D::Debit, 'amount' => $r['business_capital_return']],
+                        ['account' => $businessAccount, 'direction' => D::Debit, 'amount' => $r['business_capital_return']],
                         ['account' => $this->ledger->systemAccount(A::BusinessFunds, Currency::CODE, $contract->project_id), 'direction' => D::Credit, 'amount' => $r['business_capital_return']],
-                    ], "settlement:{$settlement->id}:business-capital", ['user_id' => $business->user_id, 'project_id' => $contract->project_id, 'description' => 'Business capital returned — '.$contract->contract_number]);
+                    ], "settlement:{$settlement->id}:business-capital", $meta(['user_id' => $business->user_id, 'description' => 'Business capital recovered — '.$contract->contract_number]));
                     $settlement->items()->forceCreate(['user_id' => $business->user_id, 'item_type' => Item::BusinessCapitalReturn, 'amount' => $r['business_capital_return']->minor, 'transaction_id' => $tx->id]);
-                }
-                if ($r['business_loss']->isPositive()) {
-                    // Ordinary commercial loss is borne as capital: the funds are consumed, never a debt of the business.
-                    $tx = $this->ledger->post(TransactionType::CapitalLoss, [
-                        ['account' => $projectFunds, 'direction' => D::Debit, 'amount' => $r['business_loss']],
-                        ['account' => $this->ledger->systemAccount(A::PlatformCash), 'direction' => D::Credit, 'amount' => $r['business_loss']],
-                    ], "settlement:{$settlement->id}:business-loss", ['user_id' => $business->user_id, 'project_id' => $contract->project_id, 'description' => 'Business share of capital loss — '.$contract->contract_number]);
-                    $settlement->items()->forceCreate(['user_id' => $business->user_id, 'item_type' => Item::BusinessCapitalLoss, 'amount' => -$r['business_loss']->minor, 'transaction_id' => $tx->id]);
                 }
                 $contract->musharakahContribution?->forceFill(['status' => \App\Enums\CapitalContributionStatus::Settled])->save();
             }
@@ -207,8 +200,15 @@ class SettlementService
                 $tx = $this->ledger->post(TransactionType::ProfitDistribution, [
                     ['account' => $projectFunds, 'direction' => D::Debit, 'amount' => $r['business_profit']],
                     ['account' => $this->ledger->systemAccount(A::BusinessFunds, Currency::CODE, $contract->project_id), 'direction' => D::Credit, 'amount' => $r['business_profit']],
-                ], "settlement:{$settlement->id}:business-profit", ['user_id' => $business->user_id, 'project_id' => $contract->project_id, 'description' => 'Business profit share — '.$contract->contract_number]);
+                ], "settlement:{$settlement->id}:business-profit", $meta(['user_id' => $business->user_id, 'description' => 'Business profit share — '.$contract->contract_number]));
                 $settlement->items()->forceCreate(['user_id' => $business->user_id, 'item_type' => Item::BusinessProfitShare, 'amount' => $r['business_profit']->minor, 'transaction_id' => $tx->id]);
+            }
+
+            // The venture asset must be fully closed and the interim pool fully distributed.
+            $left = (int) \App\Models\LedgerAccount::whereKey($ventureCapital->id)->value('balance');
+            $pool = (int) \App\Models\LedgerAccount::whereKey($projectFunds->id)->value('balance');
+            if ($left !== 0 || $pool !== 0) {
+                throw new FinancialException('Settlement left an unexplained balance (venture capital '.$left.', interim proceeds '.$pool.'); nothing was posted.');
             }
 
             // Ordinary business loss falls on capital. Only documented fault creates a recoverable amount.
@@ -216,13 +216,14 @@ class SettlementService
                 if (blank($reason)) {
                     throw new FinancialException('Record the documented negligence, misconduct or breach before attributing a loss to the manager.');
                 }
-                ManagerRecovery::create(['contract_id' => $contract->id, 'business_id' => $business->id, 'amount' => $r['manager_liability']->minor, 'reason' => $reason, 'created_by' => $by->id] + ['settlement_id' => $settlement->id]);
+                $recovery = new ManagerRecovery(['contract_id' => $contract->id, 'business_id' => $business->id, 'amount' => $r['manager_liability']->minor, 'claimed_amount' => $r['manager_liability']->minor, 'reason' => $reason, 'created_by' => $by->id] + ['settlement_id' => $settlement->id]);
+                $recovery->forceFill(['status' => ManagerRecoveryStatus::Suspected])->save();   // an allegation, not a liability: no ledger asset
                 $settlement->items()->forceCreate(['user_id' => $business->user_id, 'item_type' => Item::ManagerLiability, 'amount' => $r['manager_liability']->minor]);
             }
 
             $r['terms']->forceFill(['actual_net_result' => $netResult->minor])->save();
             $contract->transitionTo(ContractStatus::Completed);
-            $contract->forceFill(['recovery_status' => $r['manager_liability']->isPositive() ? RecoveryStatus::InRecovery : $contract->recovery_status])->save();
+            $contract->forceFill(['recovery_status' => $contract->recovery_status])->save();
             $project->forceFill(['status' => ProjectStatus::Completed])->save();
             $settlement->forceFill(['status' => SettlementStatus::Posted, 'posted_at' => now()])->save();
             $this->audit->record('settlement.posted', $settlement, null, [

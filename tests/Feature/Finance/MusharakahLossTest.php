@@ -43,7 +43,7 @@ it('derives ownership from capital and keeps the profit ratio independent', func
 
 it('profit is distributed by the agreed profit ratio, business share recorded', function () {
     [$contract, $inv, $project] = musharakahFixture();
-    remit($contract, 10000000);
+    closeOut($contract, 10000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(10000000), User::factory()->create());
     expect((int) $s->items->where('item_type', Item::InvestmentProfit)->sum('amount'))->toBe(5000000)
         ->and((int) $s->items->where('item_type', Item::BusinessProfitShare)->sum('amount'))->toBe(5000000)
@@ -54,6 +54,7 @@ it('profit is distributed by the agreed profit ratio, business share recorded', 
 it('an ordinary loss is allocated by capital contribution ratio (investor bears 70%)', function () {
     [$contract, $inv] = musharakahFixture();
     expect($contract->musharakah->loss_allocation_basis)->toBe(LossAllocationBasis::CapitalRatio);
+    closeOut($contract, -10000000);
     $s = app(SettlementService::class)->settle($contract, Money::minor(-10000000), User::factory()->create());
     $w = app(WalletService::class);
     expect($w->balances($w->walletFor($inv->user))['available']->minor)->toBe(10000000 + 70000000 - 7000000)   // balance left + principal back - 70% of the 100,000 loss
@@ -74,6 +75,7 @@ it('the application form cannot select an agreed loss ratio', function () {
 it('settlement refuses an agreed ratio that has no documented Shariah approval', function () {
     [$contract] = musharakahFixture();
     corrupt('musharakah_contracts', ['contract_id' => $contract->id], ['loss_allocation_basis' => 'AGREED_RATIO']);   // bypassing the workflow
+    closeOut($contract->fresh(), -10000000);
     expect(fn () => app(SettlementService::class)->settle($contract->fresh(), Money::minor(-10000000), User::factory()->create()))->toThrow(FinancialException::class, 'not supported for new contracts');
 });
 
@@ -96,6 +98,7 @@ it('LEGACY: a contract that already carries the frozen exception is still settle
     // Historical data as it existed before the freeze (written directly: the workflow can no longer create it).
     corrupt('musharakah_contracts', ['contract_id' => $contract->id], ['loss_allocation_basis' => 'AGREED_RATIO', 'legacy_loss_exception' => 1, 'loss_exception_reason' => 'Historic scholar panel resolution 14: equal loss.', 'loss_exception_approved_by' => User::factory()->create()->id, 'loss_exception_approved_at' => now()]);
 
+    closeOut($contract->fresh(), -10000000);
     $s = app(SettlementService::class)->settle($contract->fresh(), Money::minor(-10000000), User::factory()->create());
     expect((int) $s->items->where('item_type', Item::Adjustment)->sum('amount'))->toBe(-5000000);   // legacy 50/50, not 70/30
 });
@@ -103,5 +106,6 @@ it('LEGACY: a contract that already carries the frozen exception is still settle
 it('a non-legacy contract with an agreed ratio is refused even if approval columns are filled in', function () {
     [$contract] = musharakahFixture();
     corrupt('musharakah_contracts', ['contract_id' => $contract->id], ['loss_allocation_basis' => 'AGREED_RATIO', 'loss_exception_reason' => 'Forged approval for the test, long enough.', 'loss_exception_approved_by' => User::factory()->create()->id, 'loss_exception_approved_at' => now()]);
+    closeOut($contract->fresh(), -10000000);
     expect(fn () => app(SettlementService::class)->settle($contract->fresh(), Money::minor(-10000000), User::factory()->create()))->toThrow(FinancialException::class, 'not supported for new contracts');
 });

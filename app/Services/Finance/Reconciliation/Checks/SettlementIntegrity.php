@@ -78,7 +78,7 @@ class SettlementIntegrity extends Check
             // Manager liability is a recorded, recoverable amount (never just a status).
             $liability = (int) $items->where('item_type', 'MANAGER_LIABILITY')->sum('amount');
             $recovery = DB::table('manager_recoveries')->where('settlement_id', $s->id)->first();
-            if ($liability > 0 && (! $recovery || (int) $recovery->amount !== $liability)) {
+            if ($liability > 0 && (! $recovery || (int) ($recovery->claimed_amount ?? $recovery->amount) !== $liability)) {
                 $e[] = "Settlement #{$s->id}: manager liability is not recorded as a recoverable amount.";
             }
             if ($liability === 0 && $recovery) {

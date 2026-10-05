@@ -21,6 +21,12 @@ enum TransactionType: string
     case BusinessRemittance = 'BUSINESS_REMITTANCE';
     case BusinessCapitalReturn = 'BUSINESS_CAPITAL_RETURN';
     case CapitalLoss = 'CAPITAL_LOSS';
+    case CapitalDeployment = 'CAPITAL_DEPLOYMENT';
+    case VentureCapitalReturn = 'VENTURE_CAPITAL_RETURN';
+    case InterimProceeds = 'INTERIM_PROCEEDS';
+    case LossRecognition = 'LOSS_RECOGNITION';
+    case RecoveryReceipt = 'RECOVERY_RECEIPT';
+    case RecoveryDistribution = 'RECOVERY_DISTRIBUTION';
 
     public function label(): string
     {
@@ -41,8 +47,20 @@ enum TransactionType: string
             self::MusharakahCapital => 'Musharakah business capital',
             self::BusinessRemittance => 'Business remittance',
             self::BusinessCapitalReturn => 'Business capital return',
-            self::CapitalLoss => 'Business capital loss',
+            self::CapitalLoss => 'Business capital loss (legacy)',
+            self::CapitalDeployment => 'Capital deployed to the venture',
+            self::VentureCapitalReturn => 'Venture capital returned',
+            self::InterimProceeds => 'Interim proceeds received',
+            self::LossRecognition => 'Capital loss recognised',
+            self::RecoveryReceipt => 'Recovery received',
+            self::RecoveryDistribution => 'Recovery distributed',
         };
+    }
+
+    /** Retired from new flows (earlier funding/remittance design); kept for historical entries. */
+    public function isLegacy(): bool
+    {
+        return in_array($this, [self::ProjectFunding, self::CapitalRelease, self::BusinessRemittance, self::CapitalLoss], true);
     }
 
     /** @return array<string, string> value => label */
