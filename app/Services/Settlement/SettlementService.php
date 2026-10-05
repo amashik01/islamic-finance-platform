@@ -269,8 +269,8 @@ class SettlementService
             $out = ['principal_pool' => $r['principal_returned'], 'investor_profit' => $r['investor_profit'], 'business_profit' => $r['business_profit'], 'business_capital_return' => $zero, 'business_loss' => $zero, 'manager_liability' => $r['manager_liability'], 'terms' => $t];
         } else {
             $t = $contract->musharakah ?? throw new FinancialException('Musharakah terms are missing.');
-            if ($t->loss_allocation_basis === LossAllocationBasis::AgreedRatio && ! $this->lossExceptionApproved($t)) {
-                throw new FinancialException('An agreed loss ratio requires documented Shariah approval. Musharakah losses follow capital contribution by default.');
+            if ($t->loss_allocation_basis === LossAllocationBasis::AgreedRatio && ! ($t->legacy_loss_exception && $this->lossExceptionApproved($t))) {
+                throw new FinancialException('An agreed loss ratio is not supported for new contracts: Musharakah losses follow capital contribution.');
             }
             $r = $this->musharakah->settle($capital, $businessCapital, $net, $t->investor_profit_bps, $t->business_profit_bps, $t->loss_allocation_basis, $this->lossExceptionApproved($t));
             $out = [

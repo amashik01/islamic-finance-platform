@@ -11,15 +11,24 @@ use App\Services\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Musharakah losses follow capital contribution. A different (agreed) allocation is an exception that is
- * unavailable by default: it needs a user with Shariah-review permission, a documented reason, can only be
- * set before the contract starts, and is audited.
+ * Musharakah losses follow capital contribution (rule MUS-LOSS-CAPITAL).
+ *
+ * LEGACY / DISABLED FOR NEW AQD. The agreed-loss-ratio exception is FROZEN: the cited standard says the contrary of
+ * capital-ratio loss cannot be agreed (rule MUS-LOSS-EXCEPTION-FROZEN, REQUIRES QUALIFIED SHARIAH REVIEW). approve()
+ * therefore always refuses. Contracts that already carry the exception are marked legacy_loss_exception and keep their
+ * stored terms for settlement and audit; revoke() can still return a not-yet-started contract to the capital ratio.
  */
 class MusharakahLossException
 {
     public function __construct(private AuditLogger $audit) {}
 
     public function approve(MusharakahContract $terms, User $approver, string $reason): MusharakahContract
+    {
+        throw new FinancialException('The agreed loss-ratio exception is frozen for new contracts: Musharakah losses follow capital contribution. Re-enabling it needs a documented ruling by a qualified Shariah board.');
+    }
+
+    /** @internal Kept only so the historical approval path stays readable; unreachable while the exception is frozen. */
+    private function legacyApprove(MusharakahContract $terms, User $approver, string $reason): MusharakahContract
     {
         if (! $approver->can('shariah.review')) {
             throw new FinancialException('Only a Shariah reviewer can approve a loss-allocation exception.');

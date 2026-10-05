@@ -1,0 +1,5 @@
+# Contract template engine
+`ContractTemplate` (aqd type, code, language) → `ContractTemplateVersion` (version, status, effective dates, Shariah review status/reviewer/date) → `ContractClause` (ordered, with rule codes).
+`ContractDocument` is generated from approved project terms + parties + the template version; clauses cannot be edited by users. Its canonical text is hashed with SHA-256; the hash, template version and contract version are stored. `ContractSignature` stores signer, role, method, time, the **document hash signed** and consent version. After execution the document is immutable (model guard + database trigger on MySQL); a change is an **amendment** creating a new document version that supersedes the old one, which is preserved.
+Document kinds: `MASTER_AQD` (project level, signed by the business), `PARTICIPATION` (one per investor and amount), `WAKALAH`, `MURABAHA_SALE`, `AMENDMENT`.
+Access: only the parties to a document, and staff with `contracts.view`, can open it. Metadata (IP/user agent) is stored only on the signature and is hidden from non-staff.

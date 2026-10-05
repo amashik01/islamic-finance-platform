@@ -9,6 +9,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call(RolesAndPermissionsSeeder::class);
+        app(\App\Services\Shariah\ShariahRuleRegistry::class)->sync();
 
         // Demo records are clearly flagged (is_demo) and never seeded in production.
         if (! app()->isProduction()) {

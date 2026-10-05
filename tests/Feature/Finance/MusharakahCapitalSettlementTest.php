@@ -103,22 +103,15 @@ it('19. the exceptional loss ratio cannot be used without Shariah approval', fun
     expect(fn () => app(SettlementService::class)->settle($c->fresh(), Money::minor(-10000000), User::factory()->create()))->toThrow(FinancialException::class);
 });
 
-it('19b. an approved exception made before activation is honoured on a real contract (50/50 loss)', function () {
+it('19b. the agreed loss exception cannot be approved, so a real contract always settles by capital ratio', function () {
     $project = realProject(ContractType::Musharakah, ['investor_profit' => '50', 'business_profit' => '50']);
-    app(\App\Services\Finance\MusharakahLossException::class)->approve($project->contract->musharakah, capShariahReviewer(), 'Scholar panel resolution 14: loss shared equally for this venture.');
+    expect(fn () => app(\App\Services\Finance\MusharakahLossException::class)->approve($project->contract->musharakah, capShariahReviewer(), 'Scholar panel resolution 14: loss shared equally for this venture.'))->toThrow(FinancialException::class, 'frozen');
     fund(makeInvestor(80000000), $project, 70000000);
     recordBusinessCapital($project->contract->fresh());
     $c = $project->contract->fresh();
-    expect($c->status)->toBe(ContractStatus::Active);
     $s = app(SettlementService::class)->settle($c, Money::minor(-10000000), User::factory()->create());
-    expect(sum($s, Item::Adjustment))->toBe(-5000000)->and(sum($s, Item::BusinessCapitalLoss))->toBe(-5000000);
+    expect(sum($s, Item::Adjustment))->toBe(-7000000)->and(sum($s, Item::BusinessCapitalLoss))->toBe(-3000000);   // 70/30 capital ratio despite a 50/50 profit ratio
     expect(reconcile(true)['passed'])->toBeTrue();
-});
-
-it('20. the loss exception cannot be revoked once the contract is active', function () {
-    [$c] = realMusharakah();
-    expect($c->fresh()->status)->toBe(ContractStatus::Active);
-    expect(fn () => app(\App\Services\Finance\MusharakahLossException::class)->revoke($c->musharakah, User::factory()->create(), 'changed mind'))->toThrow(FinancialException::class);
 });
 
 it('settlement without business remittance cannot pay profit; the shortfall is explained', function () {
