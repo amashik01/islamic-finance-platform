@@ -28,6 +28,11 @@ class BusinessesTable extends DataTable
         return ['name', 'industry', 'user.email'];
     }
 
+    protected function actionsView(): string
+    {
+        return 'livewire.admin.partials.impersonate-actions';
+    }
+
     protected function emptyTitle(): string
     {
         return 'No businesses have registered yet.';

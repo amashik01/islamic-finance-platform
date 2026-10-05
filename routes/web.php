@@ -33,6 +33,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/agreements/{document:reference}/pdf', \App\Http\Controllers\AgreementPdfController::class)->name('agreements.pdf');
 });
 
+// Development only (404 unless APP_ENV=local): "Log in as" from the admin panel.
+Route::middleware('auth')->group(function () {
+    Route::post('/impersonate/leave', [\App\Http\Controllers\ImpersonationController::class, 'stop'])->name('impersonate.stop');
+    Route::post('/impersonate/{user}', [\App\Http\Controllers\ImpersonationController::class, 'start'])->name('impersonate.start');
+});
+
 Route::prefix('investor')->name('investor.')->middleware(['auth', 'verified', 'role:INVESTOR'])->group(function () {
     Route::get('/', \App\Livewire\Investor\Dashboard::class)->name('dashboard');
     Route::view('/profile', 'portal.profile', ['portal' => 'investor'])->name('profile');

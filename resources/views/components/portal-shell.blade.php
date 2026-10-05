@@ -70,6 +70,12 @@
         </div>
     </header>
 
+    @if(session('impersonator_id') && app()->environment('local'))
+        <div class="bg-gold-300 px-4 py-2 text-center text-sm font-medium text-ink-900" role="status">
+            Development: you are viewing the platform as <strong>{{ $user->name }}</strong> ({{ $user->email }}).
+            <form method="POST" action="{{ route('impersonate.stop') }}" class="ml-2 inline">@csrf<button class="underline">Return to my admin account</button></form>
+        </div>
+    @endif
     <main id="main" class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
         @if (session('status'))<x-ui.alert type="success" class="mb-4">{{ session('status') }}</x-ui.alert>@endif
         {{ $slot }}

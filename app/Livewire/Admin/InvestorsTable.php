@@ -28,6 +28,11 @@ class InvestorsTable extends DataTable
         return ['user.name', 'user.email'];
     }
 
+    protected function actionsView(): string
+    {
+        return 'livewire.admin.partials.impersonate-actions';
+    }
+
     protected function emptyTitle(): string
     {
         return 'No investors have registered yet.';
