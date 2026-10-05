@@ -115,6 +115,15 @@ class WalletService
 
     public function requestWithdrawal(User $user, Money $amount, string $idempotencyKey): Withdrawal
     {
+        try {
+            return $this->hold($user, $amount, $idempotencyKey);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            return Withdrawal::where('idempotency_key', $idempotencyKey)->firstOrFail();
+        }
+    }
+
+    private function hold(User $user, Money $amount, string $idempotencyKey): Withdrawal
+    {
         return DB::transaction(function () use ($user, $amount, $idempotencyKey) {
             if ($existing = Withdrawal::where('idempotency_key', $idempotencyKey)->first()) {
                 return $existing;

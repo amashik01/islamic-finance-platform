@@ -128,7 +128,7 @@ it('murabaha: steps must follow request -> verify -> purchase -> own -> possess 
     $receivable = $svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin);
 
     expect($receivable->total_amount)->toBe(11000000)->and($receivable->schedules()->count())->toBe(4)
-        ->and($receivable->schedules()->sum('amount'))->toBe(11000000)
+        ->and((int) $receivable->schedules()->sum('amount'))->toBe(11000000)
         ->and($m->fresh()->stage)->toBe(MurabahaStage::Sold);
 });
 

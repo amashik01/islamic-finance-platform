@@ -102,6 +102,15 @@ class MurabahaService
     /** Records a buyer payment, applies it to installments oldest-first, and settles when fully paid. */
     public function recordPayment(Receivable $receivable, Money $amount, string $idempotencyKey, Carbon $paidOn, ?User $by = null): Payment
     {
+        try {
+            return $this->apply($receivable, $amount, $idempotencyKey, $paidOn, $by);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            return Payment::where('idempotency_key', $idempotencyKey)->firstOrFail();
+        }
+    }
+
+    private function apply(Receivable $receivable, Money $amount, string $idempotencyKey, Carbon $paidOn, ?User $by): Payment
+    {
         return DB::transaction(function () use ($receivable, $amount, $idempotencyKey, $paidOn, $by) {
             if ($existing = Payment::where('idempotency_key', $idempotencyKey)->first()) {
                 return $existing;

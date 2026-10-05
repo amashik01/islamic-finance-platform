@@ -20,6 +20,9 @@ pest()->extend(TestCase::class)
 
 pest()->extend(TestCase::class)->in('Unit');
 
+// Concurrency tests commit real data so child processes can see it; they clean up via migrate:fresh.
+pest()->extend(TestCase::class)->use(\Illuminate\Foundation\Testing\DatabaseMigrations::class)->in('Concurrency');
+
 require_once __DIR__.'/Helpers.php';
 
 /*

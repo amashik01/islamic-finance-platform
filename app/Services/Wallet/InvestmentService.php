@@ -23,6 +23,16 @@ class InvestmentService
     /** Available balance -> invested balance, atomically, once per idempotency key. */
     public function invest(Investor $investor, Project $project, Money $amount, string $idempotencyKey): Investment
     {
+        try {
+            return $this->place($investor, $project, $amount, $idempotencyKey);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            // A parallel request with the same key won the race: return its result, never a second investment.
+            return Investment::where('idempotency_key', $idempotencyKey)->firstOrFail();
+        }
+    }
+
+    private function place(Investor $investor, Project $project, Money $amount, string $idempotencyKey): Investment
+    {
         return DB::transaction(function () use ($investor, $project, $amount, $idempotencyKey) {
             if ($existing = Investment::where('idempotency_key', $idempotencyKey)->first()) {
                 return $existing;

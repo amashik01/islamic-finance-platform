@@ -41,6 +41,18 @@ class LedgerService
      */
     public function post(TransactionType $type, array $lines, ?string $idempotencyKey = null, array $attributes = []): Transaction
     {
+        try {
+            return $this->write($type, $lines, $idempotencyKey, $attributes);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            if ($idempotencyKey && ($existing = Transaction::where('idempotency_key', $idempotencyKey)->first())) {
+                return $existing;
+            }
+            throw $e;
+        }
+    }
+
+    private function write(TransactionType $type, array $lines, ?string $idempotencyKey, array $attributes): Transaction
+    {
         return DB::transaction(function () use ($type, $lines, $idempotencyKey, $attributes) {
             if ($idempotencyKey && ($existing = Transaction::where('idempotency_key', $idempotencyKey)->first())) {
                 return $existing; // duplicate request: same result, no second posting
