@@ -4,11 +4,9 @@ use App\Models\User;
 use Livewire\Volt\Volt;
 
 test('profile page is displayed', function () {
-    $user = User::factory()->create();
+    $this->actingAs(makeInvestor()->user);
 
-    $this->actingAs($user);
-
-    $response = $this->get('/profile');
+    $response = $this->get('/investor/profile');
 
     $response
         ->assertOk()

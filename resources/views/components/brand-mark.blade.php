@@ -1,0 +1,1 @@
+<svg {{ $attributes }} viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 2l4 9.500L30 16l-10 4.500L16 30l-4-9.500L2 16l10-4.500z" fill="#d3a63f" fill-opacity=".95"/><path d="M16 8l2.200 5.800L24 16l-5.800 2.200L16 24l-2.200-5.800L8 16l5.800-2.200z" fill="#083a2e"/></svg>

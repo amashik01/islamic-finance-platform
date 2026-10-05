@@ -1,0 +1,1 @@
+<x-public-layout title="Contact"><section class="mx-auto max-w-3xl px-4 py-12 sm:px-6"><h1 class="font-display text-3xl font-semibold">Contact</h1><p class="mt-4 text-ink-700">Contact details are configured by the platform administrator under Settings → Platform.</p></section></x-public-layout>

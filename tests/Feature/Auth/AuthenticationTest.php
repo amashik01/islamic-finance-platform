@@ -43,16 +43,20 @@ test('users can not authenticate with invalid password', function () {
     $this->assertGuest();
 });
 
-test('navigation menu can be rendered', function () {
-    $user = User::factory()->create();
+test('each role lands in its own portal and the sidebar renders', function () {
+    $this->actingAs(makeInvestor()->user);
+    $this->get('/dashboard')->assertRedirect(route('investor.dashboard'));
+    $this->get('/investor')->assertOk()->assertSee('Available Balance')->assertSee('My Wallet');
 
-    $this->actingAs($user);
+    $this->actingAs(makeBusiness()->user);
+    $this->get('/dashboard')->assertRedirect(route('business.dashboard'));
+    $this->get('/business')->assertOk()->assertSee('Active Projects');
 
-    $response = $this->get('/dashboard');
-
-    $response
-        ->assertOk()
-        ->assertSeeVolt('layout.navigation');
+    $admin = User::factory()->create();
+    $admin->assignRole('ADMIN');
+    $this->actingAs($admin);
+    $this->get('/dashboard')->assertRedirect(route('admin.dashboard'));
+    $this->get('/admin/dashboard')->assertOk()->assertSee('COMMAND CENTER');
 });
 
 test('users can logout', function () {

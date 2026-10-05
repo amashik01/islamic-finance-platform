@@ -1,15 +1,18 @@
 <?php
 
+use App\Actions\CreateAccount;
+use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
 new #[Layout('layouts.guest')] class extends Component
 {
+    public string $account_type = 'INVESTOR';
+    public string $business_name = '';
     public string $name = '';
     public string $email = '';
     public string $password = '';
@@ -21,14 +24,16 @@ new #[Layout('layouts.guest')] class extends Component
     public function register(): void
     {
         $validated = $this->validate([
+            'account_type' => ['required', 'in:INVESTOR,BUSINESS'],
+            'business_name' => ['required_if:account_type,BUSINESS', 'nullable', 'string', 'max:255'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
         ]);
 
-        $validated['password'] = Hash::make($validated['password']);
+        $user = app(CreateAccount::class)($validated, UserRole::from($validated['account_type']));
 
-        event(new Registered($user = User::create($validated)));
+        event(new Registered($user));
 
         Auth::login($user);
 
@@ -38,6 +43,27 @@ new #[Layout('layouts.guest')] class extends Component
 
 <div>
     <form wire:submit="register">
+        <fieldset>
+            <legend class="label">{{ __('I want to') }}</legend>
+            <div class="grid grid-cols-2 gap-3">
+                <label class="flex cursor-pointer items-center gap-2 rounded-control border border-ink-200 p-3 text-sm has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50">
+                    <input type="radio" wire:model.live="account_type" value="INVESTOR" class="text-brand-700 focus:ring-brand-500"> {{ __('Invest') }}
+                </label>
+                <label class="flex cursor-pointer items-center gap-2 rounded-control border border-ink-200 p-3 text-sm has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50">
+                    <input type="radio" wire:model.live="account_type" value="BUSINESS" class="text-brand-700 focus:ring-brand-500"> {{ __('Raise capital') }}
+                </label>
+            </div>
+            <x-input-error :messages="$errors->get('account_type')" class="mt-2" />
+        </fieldset>
+
+        @if ($account_type === 'BUSINESS')
+            <div class="mt-4">
+                <x-input-label for="business_name" :value="__('Business name')" />
+                <x-text-input wire:model="business_name" id="business_name" class="block mt-1 w-full" type="text" required />
+                <x-input-error :messages="$errors->get('business_name')" class="mt-2" />
+            </div>
+        @endif
+
         <!-- Name -->
         <div>
             <x-input-label for="name" :value="__('Name')" />

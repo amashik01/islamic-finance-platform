@@ -1,3 +1,61 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    html { @apply antialiased scroll-smooth; }
+    body { @apply bg-ink-50 text-ink-800 font-sans; }
+    h1, h2, h3 { @apply text-ink-900 tracking-tight; }
+    :focus-visible { @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white; }
+    [x-cloak] { display: none !important; }
+}
+
+@layer components {
+    /* Buttons */
+    .btn { @apply inline-flex items-center justify-center gap-2 rounded-control px-4 py-2.5 text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed; }
+    .btn-primary { @apply btn bg-brand-700 text-white shadow-sm hover:bg-brand-800 active:bg-brand-900; }
+    .btn-secondary { @apply btn border border-ink-200 bg-white text-ink-800 hover:bg-ink-50; }
+    .btn-gold { @apply btn bg-gold-400 text-ink-900 hover:bg-gold-300; }
+    .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
+    .btn-ghost { @apply btn text-ink-700 hover:bg-ink-100; }
+    .btn-sm { @apply px-3 py-1.5 text-xs; }
+    .btn-lg { @apply px-6 py-3 text-base; }
+
+    /* Form controls */
+    .input { @apply block w-full rounded-control border-ink-200 bg-white text-sm shadow-sm placeholder:text-ink-400 focus:border-brand-500 focus:ring-brand-500; }
+    .label { @apply mb-1 block text-sm font-medium text-ink-700; }
+    .help { @apply mt-1 text-xs text-ink-500; }
+    .field-error { @apply mt-1 text-sm text-red-700; }
+
+    /* Surfaces */
+    .card { @apply rounded-card border border-ink-100 bg-white shadow-card; }
+    .card-pad { @apply p-5 sm:p-6; }
+
+    /* Badges (always paired with text, never color-only) */
+    .badge { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset; }
+    .badge-neutral { @apply badge bg-ink-100 text-ink-700 ring-ink-200; }
+    .badge-success { @apply badge bg-brand-50 text-brand-800 ring-brand-200; }
+    .badge-warning { @apply badge bg-gold-50 text-gold-700 ring-gold-200; }
+    .badge-danger { @apply badge bg-red-50 text-red-700 ring-red-200; }
+    .badge-info { @apply badge bg-sky-50 text-sky-700 ring-sky-200; }
+
+    /* Tables */
+    .table-wrap { @apply overflow-x-auto rounded-card border border-ink-100 bg-white shadow-card; }
+    .table { @apply min-w-full divide-y divide-ink-100 text-sm; }
+    .table th { @apply bg-ink-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-500; }
+    .table td { @apply px-4 py-3 text-ink-700; }
+    .table tbody tr { @apply hover:bg-ink-50/60; }
+
+    /* Navigation */
+    .nav-item { @apply flex items-center gap-3 rounded-control px-3 py-2 text-sm font-medium text-brand-100/90 hover:bg-white/10 hover:text-white; }
+    .nav-item-active { @apply bg-white/15 text-white; }
+    .nav-heading { @apply mt-5 mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-brand-300/70; }
+
+    /* Islamic geometric pattern (subtle) */
+    .pattern-geo {
+        background-image:
+            radial-gradient(circle at 1px 1px, rgba(255,255,255,.07) 1px, transparent 0),
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.06' stroke-width='1'%3E%3Cpath d='M30 0l8.5 21.5L60 30l-21.5 8.5L30 60l-8.5-21.5L0 30l21.5-8.5z'/%3E%3Ccircle cx='30' cy='30' r='8'/%3E%3C/g%3E%3C/svg%3E");
+        background-size: 24px 24px, 60px 60px;
+    }
+}
