@@ -37,6 +37,11 @@ class ContractsTable extends DataTable
         return ['status' => ['label' => 'Status', 'options' => ContractStatus::options(), 'apply' => fn ($q, $v) => $q->where('status', $v)]];
     }
 
+    protected function actionsView(): string
+    {
+        return 'livewire.admin.partials.contract-actions';
+    }
+
     protected function emptyTitle(): string
     {
         return 'No contracts of this type yet.';

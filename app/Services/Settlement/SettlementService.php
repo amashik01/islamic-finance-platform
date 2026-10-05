@@ -38,6 +38,7 @@ class SettlementService
         private MudarabahProfitCalculator $mudarabah,
         private MusharakahProfitCalculator $musharakah,
         private AuditLogger $audit,
+        private \App\Services\Notify\Notifier $notify,
     ) {}
 
     /** Business remits cash into the project (Dr platform cash / Cr project funds). */
@@ -111,6 +112,7 @@ class SettlementService
                     $settlement->items()->forceCreate(['investment_id' => $inv->id, 'user_id' => $inv->investor->user_id, 'item_type' => Item::InvestmentProfit, 'amount' => $profits[$i]->minor, 'transaction_id' => $tx->id]);
                 }
                 $inv->forceFill(['status' => InvestmentStatus::Completed])->save();
+                $this->notify->to($inv->investor->user, 'Contract settled', 'Principal returned: '.$returned->format().'. Profit distributed: '.$profits[$i]->format().'.', 'success', route('investor.investments.show', $inv));
             }
 
             $terms->forceFill(['actual_net_result' => $netResult->minor])->save();

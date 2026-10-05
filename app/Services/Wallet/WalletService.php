@@ -22,7 +22,7 @@ use Illuminate\Support\Str;
 
 class WalletService
 {
-    public function __construct(private LedgerService $ledger, private AuditLogger $audit) {}
+    public function __construct(private LedgerService $ledger, private AuditLogger $audit, private \App\Services\Notify\Notifier $notify) {}
 
     public function walletFor(User $user, string $currency = 'BDT'): Wallet
     {
@@ -94,6 +94,7 @@ class WalletService
 
             $deposit->forceFill(['status' => DepositStatus::Verified, 'verified_by' => $by->id, 'verified_at' => now(), 'transaction_id' => $tx->id])->save();
             $this->audit->record('deposit.verified', $deposit, null, ['amount' => $deposit->amount]);
+            $this->notify->to($deposit->user, 'Deposit verified', $amount->format().' has been added to your available balance.', 'success', route('investor.wallet'));
 
             return $deposit;
         });
@@ -149,6 +150,7 @@ class WalletService
                 ['account' => $this->account($wallet, A::InvestorPending), 'direction' => D::Credit, 'amount' => $amount],
             ], 'withdrawal-hold:'.$withdrawal->id, ['user_id' => $user->id, 'description' => 'Withdrawal request '.$withdrawal->reference]);
             $withdrawal->forceFill(['transaction_id' => $tx->id])->save();
+            $this->notify->toStaffWith('withdrawals.approve', 'New withdrawal request', $user->name.' requested '.$amount->format().'.', route('admin.withdrawals'));
 
             return $withdrawal;
         });
@@ -187,6 +189,7 @@ class WalletService
             $old = $withdrawal->status->value;
             $withdrawal->forceFill(['status' => $to, 'reviewed_by' => $by->id, 'reviewed_at' => now(), 'reason' => $reason ?? $withdrawal->reason])->save();
             $this->audit->record('withdrawal.'.strtolower($to->value), $withdrawal, ['status' => $old], ['status' => $to->value], $reason);
+            $this->notify->to($withdrawal->user, 'Withdrawal '.strtolower($to->label()), 'Your withdrawal of '.$amount->format().' is now: '.$to->label().($reason && $to === WithdrawalStatus::Rejected ? ' — '.$reason : '').'.', $to === WithdrawalStatus::Rejected ? 'warning' : 'info', route('investor.withdrawals'));
 
             return $withdrawal;
         });

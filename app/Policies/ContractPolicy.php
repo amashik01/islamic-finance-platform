@@ -20,6 +20,11 @@ class ContractPolicy
         return $user->investor && $contract->investments()->where('investor_id', $user->investor->id)->exists();
     }
 
+    public function manage(User $user, Contract $contract): bool
+    {
+        return $user->can('contracts.manage');
+    }
+
     /** Terms are frozen after approval; only managers can change them (and must audit it). */
     public function update(User $user, Contract $contract): bool
     {

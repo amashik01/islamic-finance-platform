@@ -79,6 +79,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'verified', 'role:AD
         'contracts/mudarabah' => ['contracts.mudarabah', \App\Livewire\Admin\MudarabahContractsTable::class, 'contracts.view'],
         'contracts/musharakah' => ['contracts.musharakah', \App\Livewire\Admin\MusharakahContractsTable::class, 'contracts.view'],
         'contracts/murabaha' => ['contracts.murabaha', \App\Livewire\Admin\MurabahaContractsTable::class, 'contracts.view'],
+        'contracts/{contract}' => ['contracts.show', \App\Livewire\Admin\ContractDetails::class, 'contracts.view'],
         'investments' => ['investments', \App\Livewire\Admin\InvestmentsTable::class, 'investments.view'],
         'wallets' => ['wallets', \App\Livewire\Admin\WalletsTable::class, 'wallet.view'],
         'ledger' => ['ledger', \App\Livewire\Admin\LedgerTable::class, 'ledger.view'],

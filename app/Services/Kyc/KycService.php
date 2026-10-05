@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 class KycService
 {
-    public function __construct(private AuditLogger $audit) {}
+    public function __construct(private AuditLogger $audit, private \App\Services\Notify\Notifier $notify) {}
 
     public function submit(Investor|Business $party): void
     {
@@ -29,6 +29,7 @@ class KycService
         }
         $party->forceFill(['kyc_status' => KycStatus::Pending])->save();
         $this->audit->record('kyc.submitted', $party);
+        $this->notify->toStaffWith('kyc.review', 'New KYC submission', ($party instanceof Investor ? $party->user->name : $party->name).' submitted documents for verification.', route('admin.kyc'));
     }
 
     public function review(Investor|Business $party, User $by, bool $approve, ?string $reason = null): void
@@ -49,6 +50,7 @@ class KycService
             if ($approve) {
                 $party->documents()->where('verification_status', DocumentVerificationStatus::Pending)->update(['verification_status' => DocumentVerificationStatus::Verified, 'verified_by' => $by->id, 'verified_at' => now()]);
             }
+            $this->notify->to($party->user, $approve ? 'Verification approved' : 'Verification not accepted', $approve ? 'You are now verified.' : 'Reason: '.$reason, $approve ? 'success' : 'warning');
             $this->audit->record($approve ? 'kyc.approved' : 'kyc.rejected', $party, ['kyc_status' => $old], ['kyc_status' => $party->kyc_status->value], $reason);
         });
     }

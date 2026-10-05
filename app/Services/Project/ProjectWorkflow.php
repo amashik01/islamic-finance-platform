@@ -27,7 +27,7 @@ class ProjectWorkflow
         'cancel' => [[S::Draft, S::Review, S::NeedsRevision, S::Approved, S::Funding, S::Paused], S::Cancelled],
     ];
 
-    public function __construct(private AuditLogger $audit) {}
+    public function __construct(private AuditLogger $audit, private \App\Services\Notify\Notifier $notify) {}
 
     public function submit(Project $p, User $by): Project
     {
@@ -39,6 +39,8 @@ class ProjectWorkflow
         }
         $p = $this->move($p, 'submit', $by);
         ShariahReview::firstOrCreate(['project_id' => $p->id, 'status' => ShariahReviewStatus::Pending], ['contract_id' => $p->contract->id]);
+        $this->notify->to($p->business->user, 'Project submitted', $p->title.' was submitted for review.', 'info', route('business.projects.show', $p));
+        $this->notify->toStaffWith('projects.review', 'New project to review', $p->business->name.' submitted '.$p->title.'.', route('admin.projects.show', $p));
 
         return $p;
     }
@@ -101,6 +103,20 @@ class ProjectWorkflow
         });
     }
 
+    private function notifyBusiness(Project $p, string $action, ?string $reason): void
+    {
+        $map = [
+            'approve' => ['Project approved', $p->title.' was approved.', 'success'],
+            'reject' => ['Project rejected', $p->title.' was rejected.'.($reason ? ' Reason: '.$reason : ''), 'warning'],
+            'requestRevision' => ['Revision requested', 'Changes are needed for '.$p->title.'.'.($reason ? ' '.$reason : ''), 'warning'],
+            'publish' => ['Project published', $p->title.' is now open for funding.', 'success'],
+        ];
+        if (isset($map[$action])) {
+            [$t, $m, $k] = $map[$action];
+            $this->notify->to($p->business->user, $t, $m, $k, route('business.projects.show', $p));
+        }
+    }
+
     private function move(Project $project, string $action, User $by, ?string $reason = null, ?\Closure $after = null): Project
     {
         [$from, $to] = self::ALLOWED[$action];
@@ -114,6 +130,7 @@ class ProjectWorkflow
             $p->forceFill(['status' => $to, 'reviewer_id' => in_array($action, ['approve', 'reject', 'requestRevision'], true) ? $by->id : $p->reviewer_id])->save();
             $after && $after($p);
             $this->audit->record('project.'.$action, $p, ['status' => $old], ['status' => $to->value], $reason);
+            $this->notifyBusiness($p, $action, $reason);
 
             return $p->fresh();
         });

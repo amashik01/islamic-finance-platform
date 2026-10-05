@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 
 class InvestmentService
 {
-    public function __construct(private LedgerService $ledger, private WalletService $wallets) {}
+    public function __construct(private LedgerService $ledger, private WalletService $wallets, private \App\Services\Notify\Notifier $notify) {}
 
     /** Available balance -> invested balance, atomically, once per idempotency key. */
     public function invest(Investor $investor, Project $project, Money $amount, string $idempotencyKey): Investment
@@ -71,6 +71,11 @@ class InvestmentService
                 $project->status = ProjectStatus::Active;
             }
             $project->save();
+
+            $this->notify->to($investor->user, 'Investment confirmed', 'You invested '.$amount->format().' in '.$project->title.'.', 'success', route('investor.investments.show', $investment));
+            if ($project->status === ProjectStatus::Active) {
+                $this->notify->to($project->business->user, 'Funding completed', $project->title.' has reached its funding target.', 'success', route('business.projects.show', $project));
+            }
 
             return $investment;
         });
