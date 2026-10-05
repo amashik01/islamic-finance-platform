@@ -1,0 +1,32 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class LedgerAccount extends Model
+{
+    protected $guarded = ['id', 'balance'];
+
+    protected function casts(): array
+    {
+        return ['type'=>\App\Enums\LedgerAccountType::class];
+    }
+
+    public function wallet(): BelongsTo
+    {
+        return $this->belongsTo(Wallet::class);
+    }
+
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class);
+    }
+
+    public function entries(): HasMany
+    {
+        return $this->hasMany(LedgerEntry::class);
+    }
+}
