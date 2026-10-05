@@ -68,3 +68,40 @@ it('parallel withdrawals cannot overdraw the wallet', function () {
     $b = app(WalletService::class)->balances(app(WalletService::class)->walletFor($investor->user));
     expect($b['available']->minor)->toBe(400000)->and($b['pending']->minor)->toBe(600000)->and($b['available']->minor)->toBeGreaterThanOrEqual(0);
 });
+
+it('an investment and a withdrawal race for the same balance: only one wins and nothing goes negative', function () {
+    $investor = makeInvestor(1000000);               // BDT 10,000
+    $project = makeProject();
+    DB::commit();
+
+    $out = race([
+        ['invest', $investor->id, '8000', 'mix-i', $project->id],
+        ['withdraw', $investor->id, '8000', 'mix-w'],
+        ['invest', $investor->id, '8000', 'mix-i2', $project->id],
+        ['withdraw', $investor->id, '8000', 'mix-w2'],
+    ]);
+
+    expect(collect($out)->filter(fn ($o) => $o === 'OK')->count())->toBe(1)
+        ->and(collect($out)->filter(fn ($o) => str_starts_with($o, 'ERROR'))->count())->toBe(0);
+    $b = app(WalletService::class)->balances(app(WalletService::class)->walletFor($investor->user));
+    expect($b['available']->minor)->toBe(200000)->and($b['available']->minor)->toBeGreaterThanOrEqual(0)
+        ->and($b['invested']->minor + $b['pending']->minor)->toBe(800000);   // the 8,000 sits in exactly one bucket
+    $r = app(\App\Services\Finance\Reconciliation\ReconciliationService::class)->run();
+    expect(\App\Services\Finance\Reconciliation\ReconciliationService::passed($r, true))->toBeTrue();
+});
+
+it('the books reconcile after a burst of parallel investments and withdrawals', function () {
+    $investor = makeInvestor(5000000);
+    $project = makeProject();
+    DB::commit();
+    $jobs = [];
+    foreach (range(1, 5) as $i) {
+        $jobs[] = ['invest', $investor->id, '3000', "burst-i$i", $project->id];
+        $jobs[] = ['withdraw', $investor->id, '2000', "burst-w$i"];
+    }
+    race($jobs);
+    $b = app(WalletService::class)->balances(app(WalletService::class)->walletFor($investor->user));
+    expect($b['available']->minor)->toBeGreaterThanOrEqual(0);
+    $r = app(\App\Services\Finance\Reconciliation\ReconciliationService::class)->run();
+    expect(\App\Services\Finance\Reconciliation\ReconciliationService::passed($r, true))->toBeTrue(json_encode(collect($r)->flatMap(fn ($x) => $x->errors)->all()));
+});

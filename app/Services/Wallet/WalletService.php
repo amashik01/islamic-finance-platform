@@ -15,7 +15,9 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\Audit\AuditLogger;
+use App\Services\Finance\IdempotencyGuard;
 use App\Services\Ledger\LedgerService;
+use App\Support\Money\Currency;
 use App\Support\Money\Money;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -24,10 +26,13 @@ class WalletService
 {
     public function __construct(private LedgerService $ledger, private AuditLogger $audit, private \App\Services\Notify\Notifier $notify, private \App\Services\Settings\SettingsService $settings) {}
 
-    public function walletFor(User $user, string $currency = 'BDT'): Wallet
+    public function walletFor(User $user, string $currency = Currency::CODE): Wallet
     {
+        Currency::require($currency, 'Wallet currency');
+
         return DB::transaction(function () use ($user, $currency) {
             $wallet = Wallet::firstOrCreate(['user_id' => $user->id, 'currency' => $currency]);
+            Currency::require($wallet->currency, 'Wallet currency');
             foreach ([A::InvestorAvailable, A::InvestorInvested, A::InvestorPending] as $type) {
                 LedgerAccount::firstOrCreate(
                     ['code' => "w{$wallet->id}:".strtolower($type->value)],
@@ -68,13 +73,28 @@ class WalletService
             throw new FinancialException('Enter a deposit amount greater than zero.');
         }
 
-        return Deposit::firstOrCreate(['idempotency_key' => $idempotencyKey], [
-            'user_id' => $user->id,
-            'reference' => 'DEP-'.strtoupper(Str::random(8)),
-            'amount' => $amount->minor,
-            'currency' => $amount->currency,
-            'payment_reference' => $paymentReference,
-        ]);
+        $hash = IdempotencyGuard::hash(['op' => 'deposit', 'user' => $user->id, 'amount' => $amount->minor, 'ref' => $paymentReference]);
+        if ($existing = Deposit::where('idempotency_key', $idempotencyKey)->first()) {
+            IdempotencyGuard::assertMatches($existing->request_hash, $hash);
+
+            return $existing;
+        }
+        try {
+            return Deposit::create([
+                'user_id' => $user->id,
+                'reference' => 'DEP-'.strtoupper(Str::random(8)),
+                'amount' => $amount->minor,
+                'currency' => $amount->currency,
+                'payment_reference' => $paymentReference,
+                'idempotency_key' => $idempotencyKey,
+                'request_hash' => $hash,
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            $existing = Deposit::where('idempotency_key', $idempotencyKey)->firstOrFail();
+            IdempotencyGuard::assertMatches($existing->request_hash, $hash);
+
+            return $existing;
+        }
     }
 
     public function verifyDeposit(Deposit $deposit, User $by): Deposit
@@ -115,17 +135,23 @@ class WalletService
 
     public function requestWithdrawal(User $user, Money $amount, string $idempotencyKey): Withdrawal
     {
+        $hash = IdempotencyGuard::hash(['op' => 'withdrawal', 'user' => $user->id, 'amount' => $amount->minor]);
         try {
-            return $this->hold($user, $amount, $idempotencyKey);
+            return $this->hold($user, $amount, $idempotencyKey, $hash);
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
-            return Withdrawal::where('idempotency_key', $idempotencyKey)->firstOrFail();
+            $existing = Withdrawal::where('idempotency_key', $idempotencyKey)->firstOrFail();
+            IdempotencyGuard::assertMatches($existing->request_hash, $hash);
+
+            return $existing;
         }
     }
 
-    private function hold(User $user, Money $amount, string $idempotencyKey): Withdrawal
+    private function hold(User $user, Money $amount, string $idempotencyKey, string $hash): Withdrawal
     {
-        return DB::transaction(function () use ($user, $amount, $idempotencyKey) {
+        return DB::transaction(function () use ($user, $amount, $idempotencyKey, $hash) {
             if ($existing = Withdrawal::where('idempotency_key', $idempotencyKey)->first()) {
+                IdempotencyGuard::assertMatches($existing->request_hash, $hash);
+
                 return $existing;
             }
             $investor = $user->investor ?? throw new FinancialException('Only investors can withdraw funds.');
@@ -152,6 +178,7 @@ class WalletService
                 'currency' => $amount->currency,
                 'bank_account_number' => $investor->bank_account_number,
                 'idempotency_key' => $idempotencyKey,
+                'request_hash' => $hash,
             ]);
             // Throws "Insufficient available balance." if the lock-protected balance cannot cover it.
             $tx = $this->ledger->post(TransactionType::Withdrawal, [

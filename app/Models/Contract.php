@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Contract extends Model
 {
+    use \App\Models\Concerns\EnforcesBdt;
+
     protected $guarded = ['id', 'status', 'approved_by', 'approved_at'];
 
     protected function casts(): array

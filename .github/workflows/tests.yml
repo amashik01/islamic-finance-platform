@@ -3,6 +3,7 @@ name: Tests
 on:
   push:
     branches:
+      - main
       - master
       - '*.x'
   pull_request:
@@ -19,7 +20,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        php: [8.2, 8.3, 8.4]
+        php: [8.3, 8.4]   # Pest 4 / PHPUnit 12 need PHP 8.3+; the app itself also runs on 8.2 (composer install --no-dev)
 
     name: PHP ${{ matrix.php }}
 
@@ -45,3 +46,9 @@ jobs:
 
       - name: Execute tests
         run: php artisan test
+
+      - name: Financial reconciliation gate (strict)
+        run: |
+          touch database/database.sqlite
+          php artisan migrate:fresh --seed --force
+          php artisan finance:reconcile --strict

@@ -83,3 +83,33 @@ function activeContract(\App\Models\Project $project, array $terms = []): \App\M
 
     return $c->fresh();
 }
+
+/** Raw DB write that bypasses model guards. Returns false when a database CHECK constraint refused it (MySQL). */
+function corrupt(string $table, array $where, array $values): bool
+{
+    try {
+        \Illuminate\Support\Facades\DB::table($table)->where($where)->update($values);
+
+        return true;
+    } catch (\Illuminate\Database\QueryException) {
+        return false;
+    }
+}
+
+function reconcile(bool $strict = false): array
+{
+    $results = app(\App\Services\Finance\Reconciliation\ReconciliationService::class)->run();
+
+    return ['passed' => \App\Services\Finance\Reconciliation\ReconciliationService::passed($results, $strict), 'results' => collect($results)->keyBy('name')];
+}
+
+/** Active Murabaha contract fixture at stage REQUESTED with an asset, plus an admin user. */
+function murabahaFixture(): array
+{
+    $project = makeProject(['funding_target' => 10000000, 'contract_type' => \App\Enums\ContractType::Murabaha, 'status' => \App\Enums\ProjectStatus::Approved]);
+    $contract = activeContract($project);
+    $contract->forceFill(['status' => \App\Enums\ContractStatus::Approved])->save();
+    $contract->murabaha->assets()->create(['name' => 'Refrigeration units', 'supplier_name' => 'Supplier Ltd', 'quantity' => 4, 'unit_cost' => 2500000]);
+
+    return [$contract->fresh(), $contract->murabaha, \App\Models\User::factory()->create()];
+}

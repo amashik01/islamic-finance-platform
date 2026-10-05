@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Deposit extends Model
 {
+    use \App\Models\Concerns\EnforcesBdt;
+
     protected $guarded = ['id', 'status', 'verified_by', 'verified_at', 'transaction_id'];
 
     protected function casts(): array

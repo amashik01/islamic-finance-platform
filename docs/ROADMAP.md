@@ -1,5 +1,16 @@
 # Build status by phase
 
+## Financial integrity hardening (done)
+- **BDT only.** One canonical code (`Currency::CODE`); `Money` cannot be constructed in any other currency; every financial model rejects non-BDT on save; MySQL CHECK constraints enforce it in the database. No FX, no conversion.
+- **Ledger.** Currency checked on the transaction, every amount and every (locked) account; balanced entries; stable lock order; account balances can only change inside `LedgerService`.
+- **Idempotency.** Request fingerprints (`request_hash`) on deposits, withdrawals, investments, Murabaha payments, settlements and ledger transactions: same key + same request returns the original; same key + different request is rejected.
+- **Mudarabah.** Business profit share is recorded as its own settlement item and ledger entry; documented fault creates an auditable `manager_recoveries` row for the recoverable amount; ordinary loss falls on capital.
+- **Musharakah.** Loss follows capital contribution. An agreed ratio is an exception: Shariah-reviewer approval + documented reason + before contract start + audited.
+- **Murabaha.** Purchase, sale, receivable and payments are on the ledger (inventory → receivable + recognised sale profit → cash); subledger reconciles to the ledger.
+- **Reconciliation.** `php artisan finance:reconcile [--strict]` (read-only, ids only, non-zero exit on failure). CI runs it strict on seeded data.
+
+
+
 | Phase | Scope | Status |
 |---|---|---|
 | 1 Foundation | Laravel 12, Livewire 3, Tailwind tokens, Breeze auth, roles/permissions, 4 layouts, design system | Done |

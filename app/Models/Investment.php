@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Investment extends Model
 {
+    use \App\Models\Concerns\EnforcesBdt;
+
     protected $guarded = ['id', 'status', 'invested_at', 'is_demo'];
 
     protected function casts(): array

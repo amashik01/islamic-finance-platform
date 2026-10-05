@@ -15,6 +15,8 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class Project extends Model
 {
+    use \App\Models\Concerns\EnforcesBdt;
+
     /** Workflow fields (status, funded_amount, publication) change only through services. */
     protected $guarded = ['id', 'status', 'funded_amount', 'published_at', 'reviewer_id', 'is_demo'];
 

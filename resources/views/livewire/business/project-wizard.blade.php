@@ -52,7 +52,7 @@
                 <x-ui.field label="Investor profit share (%)" model="form.investor_profit" help="Agreed in the contract; not assumed equal to capital share." />
                 <x-ui.field label="Business profit share (%)" model="form.business_profit" />
             </div>
-            <x-ui.field label="Loss allocation basis" model="form.loss_basis" type="select">@foreach(\App\Enums\LossAllocationBasis::options() as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</x-ui.field>
+            <x-ui.alert type="info" title="Loss allocation">If the venture makes a loss, each party bears it in proportion to its capital contribution. This cannot be changed in the application form.</x-ui.alert>
             <x-ui.field label="Project activity" model="form.project_activity" :rows="4" />
 
         @elseif($step === 3 && $type === 'MURABAHA')

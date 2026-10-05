@@ -26,7 +26,7 @@ use Illuminate\Support\Str;
 /** DEMO DATA ONLY. All parties and projects carry is_demo = true. Password for every demo user: "password". */
 class DemoDataSeeder extends Seeder
 {
-    public function run(WalletService $wallets, InvestmentService $investments, MurabahaSaleCalculator $murabaha): void
+    public function run(WalletService $wallets, InvestmentService $investments, MurabahaSaleCalculator $murabaha, \App\Services\Murabaha\MurabahaService $workflow): void
     {
         $staff = [
             ['Demo Admin', 'admin@demo.test', UserRole::Admin],
@@ -68,18 +68,18 @@ class DemoDataSeeder extends Seeder
         $kc->musharakah()->create(['total_capital' => 100000000, 'investor_contribution' => 70000000, 'business_contribution' => 30000000, 'investor_ownership_bps' => 7000, 'business_ownership_bps' => 3000, 'investor_profit_bps' => 6500, 'business_profit_bps' => 3500, 'loss_allocation_basis' => LossAllocationBasis::CapitalRatio, 'project_activity' => 'Install a new dyeing line and sell processed fabric.', 'financial_assumptions' => 'Based on 60% capacity utilisation in year one.']);
 
         // 3) Murabaha — cost 100,000, sale profit 10,000, price 110,000 in 4 installments.
-        $mrb = $this->project($businesses[2], 'Shop Fit-out Equipment (Demo)', ContractType::Murabaha, 10000000, 10000000, 12, RiskLevel::Low, ProjectStatus::Active);
-        $rc = $this->contract($mrb, ContractStatus::Active, $admin);
+        //    Driven through the real service so purchase, sale and payments are all on the ledger.
+        $mrb = $this->project($businesses[2], 'Shop Fit-out Equipment (Demo)', ContractType::Murabaha, 10000000, 10000000, 12, RiskLevel::Low, ProjectStatus::Approved);
+        $rc = $this->contract($mrb, ContractStatus::Approved, $admin);
         $price = $murabaha->salePrice(Money::minor(10000000), Money::minor(1000000));
-        $mt = $rc->murabaha()->create(['stage' => MurabahaStage::Sold, 'purchase_cost' => 10000000, 'sale_profit' => 1000000, 'sale_price' => $price->minor, 'installments_count' => 4, 'delivery_terms' => 'Delivered to buyer premises.', 'payment_terms' => '4 equal monthly installments.']);
+        $mt = $rc->murabaha()->create(['stage' => MurabahaStage::Requested, 'purchase_cost' => 10000000, 'sale_profit' => 1000000, 'sale_price' => $price->minor, 'installments_count' => 4, 'delivery_terms' => 'Delivered to buyer premises.', 'payment_terms' => '4 equal monthly installments.']);
         $mt->assets()->create(['name' => 'Commercial refrigeration units', 'supplier_name' => 'Chittagong Equipment Traders', 'quantity' => 4, 'unit_cost' => 2500000]);
-        $mt->purchase()->create(['amount' => 10000000, 'purchased_on' => now()->subMonths(2), 'invoice_reference' => 'INV-DEMO-001', 'ownership_acquired_on' => now()->subMonths(2), 'possession_on' => now()->subMonths(2)->addDays(3), 'possession_notes' => 'Assets inspected and held by the financier before sale.']);
-        $sale = $mt->sale()->create(['purchase_cost' => 10000000, 'sale_profit' => 1000000, 'sale_price' => $price->minor, 'sold_on' => now()->subMonth()]);
-        $recv = $sale->receivable()->create(['business_id' => $businesses[2]->id, 'total_amount' => $price->minor]);
-        $recv->forceFill(['status' => PaymentStatus::Scheduled])->save();
-        foreach ($murabaha->installments($price, 4) as $n => $amount) {
-            $recv->schedules()->create(['sequence' => $n + 1, 'due_date' => now()->addMonths($n)->toDateString(), 'amount' => $amount->minor]);
-        }
+        $workflow->verifySupplierAndAsset($mt, $admin);
+        $workflow->recordPurchase($mt->fresh(), Money::minor(10000000), 'INV-DEMO-001', now()->subMonths(2), $admin);
+        $workflow->recordOwnership($mt->fresh(), now()->subMonths(2), $admin);
+        $workflow->recordPossession($mt->fresh(), now()->subMonths(2)->addDays(3), 'Assets inspected and held by the financier before sale.', $admin);
+        $receivable = $workflow->executeSale($mt->fresh(), now()->subMonth(), now()->addDays(5), $admin);
+        $workflow->recordPayment($receivable, Money::minor(2750000), 'demo-murabaha-pay-1', now()->subDays(2), $admin);
 
         // A few demo investments through the real service (ledger-backed, idempotent).
         $investments->invest($investors[0], $mud, Money::minor(3000000), 'demo-inv-1');

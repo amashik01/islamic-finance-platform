@@ -34,7 +34,11 @@ final class MusharakahProfitCalculator
         int $investorProfitBps,
         int $businessProfitBps,
         LossAllocationBasis $lossBasis = LossAllocationBasis::CapitalRatio,
+        bool $lossExceptionApproved = false,
     ): array {
+        if ($lossBasis === LossAllocationBasis::AgreedRatio && ! $lossExceptionApproved) {
+            throw new InvalidArgumentException('Losses follow capital contribution unless a documented Shariah-approved exception exists.');
+        }
         if ($investorProfitBps + $businessProfitBps !== Money::BPS || $investorProfitBps < 0 || $businessProfitBps < 0) {
             throw new InvalidArgumentException('Profit ratios must total 100%.');
         }

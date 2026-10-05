@@ -9,6 +9,8 @@ enum SettlementItemType: string
     case MurabahaSaleProfit = 'MURABAHA_SALE_PROFIT';
     case Fee = 'FEE';
     case Adjustment = 'ADJUSTMENT';
+    case BusinessProfitShare = 'BUSINESS_PROFIT_SHARE';
+    case ManagerLiability = 'MANAGER_LIABILITY';
 
     public function label(): string
     {
@@ -18,6 +20,8 @@ enum SettlementItemType: string
             self::MurabahaSaleProfit => 'Murabaha sale profit',
             self::Fee => 'Fees',
             self::Adjustment => 'Adjustments',
+            self::BusinessProfitShare => 'Business profit share',
+            self::ManagerLiability => 'Manager liability (recoverable)',
         };
     }
 

@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** A ledger transaction. Only `status` may change (POSTED -> REVERSED); everything else is write-once. */
 class Transaction extends Model
 {
+    use \App\Models\Concerns\EnforcesBdt;
+
     use Immutable;
 
     protected $guarded = ['id'];

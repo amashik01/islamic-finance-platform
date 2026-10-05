@@ -20,8 +20,10 @@ use App\Models\Receivable;
 use App\Models\Settlement;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Finance\IdempotencyGuard;
 use App\Services\Finance\MurabahaSaleCalculator;
 use App\Services\Ledger\LedgerService;
+use App\Support\Money\Currency;
 use App\Support\Money\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -52,9 +54,18 @@ class MurabahaService
         if ($amount->minor !== $m->purchase_cost) {
             throw new FinancialException('The purchase amount must equal the approved purchase cost.');
         }
-        $m->purchase()->updateOrCreate([], ['amount' => $amount->minor, 'purchased_on' => $on, 'invoice_reference' => $invoiceReference]);
+        Currency::require($m->contract->currency, 'The contract');
 
-        return $this->advance($m, Stage::Purchased, $by);
+        return DB::transaction(function () use ($m, $amount, $invoiceReference, $on, $by) {
+            $m->purchase()->updateOrCreate([], ['amount' => $amount->minor, 'purchased_on' => $on, 'invoice_reference' => $invoiceReference]);
+            // Asset acquisition: cash leaves, an owned asset (inventory) appears at cost.
+            $this->ledger->post(TransactionType::MurabahaPurchase, [
+                ['account' => $this->ledger->systemAccount(A::MurabahaInventory, Currency::CODE, $m->contract->project_id), 'direction' => D::Debit, 'amount' => $amount],
+                ['account' => $this->ledger->systemAccount(A::PlatformCash), 'direction' => D::Credit, 'amount' => $amount],
+            ], 'murabaha-purchase:'.$m->id, ['project_id' => $m->contract->project_id, 'description' => 'Murabaha asset purchase — '.$m->contract->contract_number, 'created_by' => $by->id]);
+
+            return $this->advance($m, Stage::Purchased, $by);
+        });
     }
 
     public function recordOwnership(MurabahaContract $m, Carbon $on, User $by): MurabahaContract
@@ -80,8 +91,9 @@ class MurabahaService
             if ($m->stage !== Stage::Possessed || ! $purchase?->possession_on || ! $purchase->ownership_acquired_on) {
                 throw new FinancialException('The asset must be owned and in possession before it can be sold.');
             }
-            $cur = $m->contract->currency;
-            $price = $this->calc->salePrice(Money::minor($m->purchase_cost, $cur), Money::minor($m->sale_profit, $cur));
+            Currency::require($m->contract->currency, 'The contract');
+            Currency::require($m->contract->project->currency, 'The project');
+            $price = $this->calc->salePrice(Money::minor($m->purchase_cost), Money::minor($m->sale_profit));
             if ($price->minor !== $m->sale_price) {
                 throw new FinancialException('The sale price does not match cost plus sale profit.');
             }
@@ -91,6 +103,14 @@ class MurabahaService
             foreach ($this->calc->installments($price, $m->installments_count) as $n => $amount) {
                 $receivable->schedules()->forceCreate(['receivable_id' => $receivable->id, 'sequence' => $n + 1, 'due_date' => $firstDueDate->copy()->addMonths($n)->toDateString(), 'amount' => $amount->minor, 'status' => PaymentStatus::Scheduled]);
             }
+            // The sale: the asset leaves inventory at cost; a receivable is created for the full sale price;
+            // the Murabaha sale profit (price - cost) is recognised separately. Never "interest".
+            $pid = $m->contract->project_id;
+            $this->ledger->post(TransactionType::MurabahaSale, [
+                ['account' => $this->ledger->systemAccount(A::MurabahaReceivable, Currency::CODE, $pid), 'direction' => D::Debit, 'amount' => $price],
+                ['account' => $this->ledger->systemAccount(A::MurabahaInventory, Currency::CODE, $pid), 'direction' => D::Credit, 'amount' => Money::minor($m->purchase_cost)],
+                ['account' => $this->ledger->systemAccount(A::MurabahaSaleProfit, Currency::CODE, $pid), 'direction' => D::Credit, 'amount' => Money::minor($m->sale_profit)],
+            ], 'murabaha-sale:'.$m->id, ['project_id' => $pid, 'description' => 'Murabaha sale — '.$m->contract->contract_number, 'created_by' => $by->id]);
             $this->advance($m, Stage::Sold, $by);
             $m->contract->forceFill(['status' => ContractStatus::Active, 'start_date' => $soldOn])->save();
             $m->contract->project->forceFill(['status' => ProjectStatus::Active])->save();
@@ -102,17 +122,23 @@ class MurabahaService
     /** Records a buyer payment, applies it to installments oldest-first, and settles when fully paid. */
     public function recordPayment(Receivable $receivable, Money $amount, string $idempotencyKey, Carbon $paidOn, ?User $by = null): Payment
     {
+        $hash = IdempotencyGuard::hash(['op' => 'murabaha_payment', 'receivable' => $receivable->id, 'amount' => $amount->minor, 'paid_on' => $paidOn->toDateString()]);
         try {
-            return $this->apply($receivable, $amount, $idempotencyKey, $paidOn, $by);
+            return $this->apply($receivable, $amount, $idempotencyKey, $paidOn, $by, $hash);
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
-            return Payment::where('idempotency_key', $idempotencyKey)->firstOrFail();
+            $existing = Payment::where('idempotency_key', $idempotencyKey)->firstOrFail();
+            IdempotencyGuard::assertMatches($existing->request_hash, $hash);
+
+            return $existing;
         }
     }
 
-    private function apply(Receivable $receivable, Money $amount, string $idempotencyKey, Carbon $paidOn, ?User $by): Payment
+    private function apply(Receivable $receivable, Money $amount, string $idempotencyKey, Carbon $paidOn, ?User $by, string $hash): Payment
     {
-        return DB::transaction(function () use ($receivable, $amount, $idempotencyKey, $paidOn, $by) {
+        return DB::transaction(function () use ($receivable, $amount, $idempotencyKey, $paidOn, $by, $hash) {
             if ($existing = Payment::where('idempotency_key', $idempotencyKey)->first()) {
+                IdempotencyGuard::assertMatches($existing->request_hash, $hash);
+
                 return $existing;
             }
             $r = Receivable::whereKey($receivable->id)->lockForUpdate()->firstOrFail();
@@ -124,12 +150,13 @@ class MurabahaService
             }
 
             $contract = $r->sale->murabahaContract->contract;
+            Currency::require($contract->currency, 'The contract');
             $tx = $this->ledger->post(TransactionType::MurabahaPayment, [
-                ['account' => $this->ledger->systemAccount(A::PlatformCash, $amount->currency), 'direction' => D::Debit, 'amount' => $amount],
-                ['account' => $this->ledger->systemAccount(A::ProjectFunds, $amount->currency, $contract->project_id), 'direction' => D::Credit, 'amount' => $amount],
+                ['account' => $this->ledger->systemAccount(A::PlatformCash), 'direction' => D::Debit, 'amount' => $amount],
+                ['account' => $this->ledger->systemAccount(A::MurabahaReceivable, Currency::CODE, $contract->project_id), 'direction' => D::Credit, 'amount' => $amount],
             ], 'murabaha-payment:'.$idempotencyKey, ['project_id' => $contract->project_id, 'description' => 'Murabaha payment — '.$contract->contract_number, 'created_by' => $by?->id]);
 
-            $payment = Payment::forceCreate(['receivable_id' => $r->id, 'amount' => $amount->minor, 'reference' => 'PAY-'.strtoupper(Str::random(8)), 'idempotency_key' => $idempotencyKey, 'transaction_id' => $tx->id, 'paid_on' => $paidOn]);
+            $payment = Payment::forceCreate(['receivable_id' => $r->id, 'amount' => $amount->minor, 'reference' => 'PAY-'.strtoupper(Str::random(8)), 'idempotency_key' => $idempotencyKey, 'transaction_id' => $tx->id, 'paid_on' => $paidOn, 'request_hash' => $hash]);
 
             $left = $amount->minor;
             foreach ($r->schedules()->orderBy('sequence')->lockForUpdate()->get() as $row) {
@@ -168,8 +195,8 @@ class MurabahaService
     private function settle(Receivable $r, Contract $contract): void
     {
         $m = $r->sale->murabahaContract;
-        $cur = $contract->currency;
-        $s = new Settlement(['reference' => 'STL-'.strtoupper(Str::random(8)), 'contract_id' => $contract->id, 'project_id' => $contract->project_id, 'currency' => $cur]);
+        Currency::require($contract->currency, 'The contract');
+        $s = new Settlement(['reference' => 'STL-'.strtoupper(Str::random(8)), 'contract_id' => $contract->id, 'project_id' => $contract->project_id, 'currency' => Currency::CODE]);
         $s->forceFill(['status' => SettlementStatus::Posted, 'posted_at' => now()])->save();
         // Kept as separate concepts: cost recovered vs Murabaha sale profit (never "interest").
         $s->items()->forceCreate(['settlement_id' => $s->id, 'item_type' => Item::Principal, 'amount' => $r->sale->purchase_cost]);

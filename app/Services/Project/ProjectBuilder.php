@@ -130,13 +130,11 @@ class ProjectBuilder
         if ($inv + $biz !== Money::BPS) {
             throw new FinancialException('Investor and business profit ratios must total 100%.');
         }
-        LossAllocationBasis::from($d['loss_basis']);
-
         return [
             'funding_target' => $investor->minor, 'total_capital' => $total->minor, 'investor_contribution' => $investor->minor, 'business_contribution' => $business->minor,
             'investor_ownership_bps' => $own['investor_ownership_bps'], 'business_ownership_bps' => $own['business_ownership_bps'],
-            'investor_profit_bps' => $inv, 'business_profit_bps' => $biz, 'loss_allocation_basis' => $d['loss_basis'],
-        ];
+            'investor_profit_bps' => $inv, 'business_profit_bps' => $biz,
+        ];   // Loss always follows capital contribution (the column default); only an approved exception can change it.
     }
 
     private function murabahaTerms(array $d): array
@@ -183,7 +181,7 @@ class ProjectBuilder
                 'total_capital' => $t['total_capital'], 'investor_contribution' => $t['investor_contribution'], 'business_contribution' => $t['business_contribution'],
                 'investor_ownership_bps' => $t['investor_ownership_bps'], 'business_ownership_bps' => $t['business_ownership_bps'],
                 'investor_profit_bps' => $t['investor_profit_bps'], 'business_profit_bps' => $t['business_profit_bps'],
-                'loss_allocation_basis' => $t['loss_allocation_basis'], 'project_activity' => $d['project_activity'] ?? null, 'financial_assumptions' => $d['financial_assumptions'] ?? null,
+                'project_activity' => $d['project_activity'] ?? null, 'financial_assumptions' => $d['financial_assumptions'] ?? null,
             ]),
             ContractType::Murabaha => $this->writeMurabaha($contract, $t, $d),
         };

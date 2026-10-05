@@ -1,13 +1,10 @@
 <?php
 
 return [
-    'default_currency' => env('FINANCE_CURRENCY', 'BDT'),
+    // BDT is the ONLY operational currency (no FX, no other currencies). Amounts are integer minor units (paisa).
+    'default_currency' => 'BDT',
 
-    // Add more currencies here; amounts are always stored as integer minor units.
-    'currencies' => [
-        'BDT' => ['name' => 'Bangladeshi Taka', 'symbol' => '৳', 'code_prefix' => 'BDT', 'minor_units' => 2],
-        'USD' => ['name' => 'US Dollar', 'symbol' => '$', 'code_prefix' => 'USD', 'minor_units' => 2],
-    ],
+    'currency' => ['name' => 'Bangladeshi Taka', 'symbol' => '৳', 'minor_units' => 2],
 
     'limits' => [
         'min_investment' => 500000,       // BDT 5,000.00 in paisa

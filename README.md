@@ -26,6 +26,10 @@ Run tests: `php artisan test`.
 - Calculators (`app/Services/Finance`) are pure and independent of the UI.
 - Contract extension point: add a `*_contracts` table, a `ContractType` case and a calculator; users, wallets, ledger, documents and audit stay untouched.
 
+## Financial integrity
+- **Operational currency: BDT only.** No FX, no other currencies; non-BDT is rejected in code and (on MySQL) by database constraints.
+- `php artisan finance:reconcile` runs read-only integrity checks (ledger, wallets, investments, settlements, Murabaha, idempotency). Add `--strict` for CI/deployment gates; any failure exits non-zero.
+
 ## Quality gates
 - 208 tests: money maths, calculators, ledger integrity, wallet/withdrawal flows, settlement, Murabaha stages, authorization, IDOR, CSRF, mass assignment, uploads, reports, UI components.
 - Concurrency tests (MySQL) race real database connections to prove a wallet cannot be double-spent and idempotency keys create exactly one record.

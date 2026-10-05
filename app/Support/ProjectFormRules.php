@@ -27,7 +27,7 @@ final class ProjectFormRules
             2 => ['contract_type' => ['required', Rule::enum(ContractType::class)]],
             3 => match ($type) {
                 'MUDARABAH' => ['investor_profit' => self::PCT, 'business_profit' => self::PCT, 'loss_terms' => ['nullable', 'string', 'max:2000'], 'business_plan' => ['required', 'string', 'max:5000']],
-                'MUSHARAKAH' => ['investor_profit' => self::PCT, 'business_profit' => self::PCT, 'loss_basis' => ['required', Rule::enum(LossAllocationBasis::class)], 'project_activity' => ['required', 'string', 'max:3000']],
+                'MUSHARAKAH' => ['investor_profit' => self::PCT, 'business_profit' => self::PCT, 'project_activity' => ['required', 'string', 'max:3000']],
                 'MURABAHA' => ['delivery_terms' => ['required', 'string', 'max:2000'], 'payment_terms' => ['required', 'string', 'max:2000'], 'installments' => ['required', 'integer', 'between:1,60'],
                     'ownership_info' => ['required', 'string', 'max:1000'], 'possession_info' => ['required', 'string', 'max:1000']],
                 default => [],

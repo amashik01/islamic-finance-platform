@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Withdrawal extends Model
 {
+    use \App\Models\Concerns\EnforcesBdt;
+
     protected $guarded = ['id', 'status', 'reviewed_by', 'reviewed_at', 'transaction_id'];
 
     protected function casts(): array

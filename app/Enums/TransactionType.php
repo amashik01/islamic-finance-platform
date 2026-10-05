@@ -13,6 +13,8 @@ enum TransactionType: string
     case Adjustment = 'ADJUSTMENT';
     case MurabahaPayment = 'MURABAHA_PAYMENT';
     case Reversal = 'REVERSAL';
+    case MurabahaPurchase = 'MURABAHA_PURCHASE';
+    case MurabahaSale = 'MURABAHA_SALE';
 
     public function label(): string
     {
@@ -26,6 +28,8 @@ enum TransactionType: string
             self::Adjustment => 'Adjustment',
             self::MurabahaPayment => 'Murabaha payment',
             self::Reversal => 'Reversal',
+            self::MurabahaPurchase => 'Murabaha asset purchase',
+            self::MurabahaSale => 'Murabaha sale',
         };
     }
 

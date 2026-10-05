@@ -45,7 +45,10 @@ it('musharakah: loss follows the contract basis', function () {
     $byCapital = $c->settle(Money::minor(70000000), Money::minor(30000000), Money::minor(-10000000), 5000, 5000);
     expect($byCapital['investor_loss']->minor)->toBe(7000000);
 
-    $byAgreed = $c->settle(Money::minor(70000000), Money::minor(30000000), Money::minor(-10000000), 5000, 5000, LossAllocationBasis::AgreedRatio);
+    // An agreed ratio is refused unless a documented, Shariah-approved exception is passed explicitly.
+    expect(fn () => $c->settle(Money::minor(70000000), Money::minor(30000000), Money::minor(-10000000), 5000, 5000, LossAllocationBasis::AgreedRatio))
+        ->toThrow(InvalidArgumentException::class, 'capital contribution');
+    $byAgreed = $c->settle(Money::minor(70000000), Money::minor(30000000), Money::minor(-10000000), 5000, 5000, LossAllocationBasis::AgreedRatio, lossExceptionApproved: true);
     expect($byAgreed['investor_loss']->minor)->toBe(5000000);
 });
 

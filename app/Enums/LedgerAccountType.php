@@ -12,6 +12,9 @@ enum LedgerAccountType: string
     case PlatformCash = 'PLATFORM_CASH';
     case PlatformFees = 'PLATFORM_FEES';
     case Clearing = 'CLEARING';
+    case MurabahaInventory = 'MURABAHA_INVENTORY';
+    case MurabahaReceivable = 'MURABAHA_RECEIVABLE';
+    case MurabahaSaleProfit = 'MURABAHA_SALE_PROFIT';
 
     public function label(): string
     {
@@ -24,6 +27,21 @@ enum LedgerAccountType: string
             self::PlatformCash => 'Platform cash',
             self::PlatformFees => 'Platform fees',
             self::Clearing => 'Clearing',
+            self::MurabahaInventory => 'Murabaha inventory (owned asset)',
+            self::MurabahaReceivable => 'Murabaha receivable',
+            self::MurabahaSaleProfit => 'Murabaha sale profit',
+        };
+    }
+
+    /**
+     * The side that increases the account. Asset-like system accounts are debit-normal; wallet,
+     * project, income and clearing accounts are credit-normal.
+     */
+    public function normalSide(): string
+    {
+        return match ($this) {
+            self::PlatformCash, self::MurabahaInventory, self::MurabahaReceivable => 'DEBIT',
+            default => 'CREDIT',
         };
     }
 

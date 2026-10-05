@@ -12,11 +12,14 @@ final readonly class Money implements \JsonSerializable
 {
     public const BPS = 10000;
 
-    private function __construct(public int $minor, public string $currency) {}
+    private function __construct(public int $minor, public string $currency)
+    {
+        Currency::assertBdt($currency);   // a Money value can only ever be BDT
+    }
 
     public static function minor(int $minor, ?string $currency = null): self
     {
-        return new self($minor, $currency ?? config('finance.default_currency'));
+        return new self($minor, $currency ?? Currency::CODE);
     }
 
     public static function zero(?string $currency = null): self

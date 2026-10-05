@@ -12,7 +12,9 @@ use App\Exceptions\FinancialException;
 use App\Models\Investment;
 use App\Models\Investor;
 use App\Models\Project;
+use App\Services\Finance\IdempotencyGuard;
 use App\Services\Ledger\LedgerService;
+use App\Support\Money\Currency;
 use App\Support\Money\Money;
 use Illuminate\Support\Facades\DB;
 
@@ -23,18 +25,24 @@ class InvestmentService
     /** Available balance -> invested balance, atomically, once per idempotency key. */
     public function invest(Investor $investor, Project $project, Money $amount, string $idempotencyKey): Investment
     {
+        $hash = IdempotencyGuard::hash(['op' => 'invest', 'investor' => $investor->id, 'project' => $project->id, 'amount' => $amount->minor]);
         try {
-            return $this->place($investor, $project, $amount, $idempotencyKey);
+            return $this->place($investor, $project, $amount, $idempotencyKey, $hash);
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
             // A parallel request with the same key won the race: return its result, never a second investment.
-            return Investment::where('idempotency_key', $idempotencyKey)->firstOrFail();
+            $existing = Investment::where('idempotency_key', $idempotencyKey)->firstOrFail();
+            IdempotencyGuard::assertMatches($existing->request_hash, $hash);
+
+            return $existing;
         }
     }
 
-    private function place(Investor $investor, Project $project, Money $amount, string $idempotencyKey): Investment
+    private function place(Investor $investor, Project $project, Money $amount, string $idempotencyKey, string $hash): Investment
     {
-        return DB::transaction(function () use ($investor, $project, $amount, $idempotencyKey) {
+        return DB::transaction(function () use ($investor, $project, $amount, $idempotencyKey, $hash) {
             if ($existing = Investment::where('idempotency_key', $idempotencyKey)->first()) {
+                IdempotencyGuard::assertMatches($existing->request_hash, $hash);
+
                 return $existing;
             }
             if ($investor->kyc_status !== KycStatus::Approved) {
@@ -42,6 +50,10 @@ class InvestmentService
             }
 
             $project = Project::whereKey($project->id)->lockForUpdate()->firstOrFail();
+            // Single-currency invariant: amount, project, contract and wallet must all be BDT.
+            Currency::require($amount->currency, 'The investment amount');
+            Currency::require($project->currency, 'The project');
+            $project->contract && Currency::require($project->contract->currency, 'The contract');
             if ($project->status !== ProjectStatus::Funding || ($project->closing_at && $project->closing_at->isPast())) {
                 throw new FinancialException('This investment is no longer accepting funds.');
             }
@@ -55,7 +67,7 @@ class InvestmentService
                 throw new FinancialException('The amount exceeds the remaining funding capacity.');
             }
 
-            $wallet = $this->wallets->walletFor($investor->user, $amount->currency);
+            $wallet = $this->wallets->walletFor($investor->user);
             $investment = Investment::unguarded(fn () => Investment::create([
                 'investor_id' => $investor->id,
                 'project_id' => $project->id,
@@ -63,6 +75,7 @@ class InvestmentService
                 'amount' => $amount->minor,
                 'currency' => $amount->currency,
                 'idempotency_key' => $idempotencyKey,
+                'request_hash' => $hash,
                 'status' => InvestmentStatus::Confirmed,
                 'invested_at' => now(),
                 'maturity_date' => now()->addMonths($project->duration_months)->toDateString(),
