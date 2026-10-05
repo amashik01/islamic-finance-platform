@@ -28,23 +28,28 @@ Route::get('/documents/{document}', \App\Http\Controllers\DocumentController::cl
 Route::prefix('investor')->name('investor.')->middleware(['auth', 'verified', 'role:INVESTOR'])->group(function () {
     Route::get('/', \App\Livewire\Investor\Dashboard::class)->name('dashboard');
     Route::view('/profile', 'portal.profile', ['portal' => 'investor'])->name('profile');
-    foreach ([
-        'wallet' => ['My Wallet', 'Phase 7-8'], 'opportunities' => ['Opportunities', 'Phase 8'], 'investments' => ['My Investments', 'Phase 8'],
-        'contracts' => ['Contracts', 'Phase 8'], 'transactions' => ['Transactions', 'Phase 8'], 'withdrawals' => ['Withdrawals', 'Phase 8'],
-        'documents' => ['Documents', 'Phase 3'], 'notifications' => ['Notifications', 'Phase 14'], 'settings' => ['Settings', 'Phase 14'],
-    ] as $uri => [$title, $phase]) {
-        Route::get("/$uri", Soon::class)->defaults('portal', 'investor')->defaults('title', $title)->defaults('phase', $phase)->name($uri);
-    }
+    Route::get('/wallet', \App\Livewire\Investor\Wallet::class)->name('wallet');
+    Route::get('/opportunities', \App\Livewire\Investor\Opportunities::class)->name('opportunities');
+    Route::get('/investments', \App\Livewire\Investor\Investments::class)->name('investments');
+    Route::get('/investments/{investment}', \App\Livewire\Investor\InvestmentDetails::class)->name('investments.show');
+    Route::get('/contracts', \App\Livewire\Investor\Contracts::class)->name('contracts');
+    Route::get('/transactions', \App\Livewire\Investor\Transactions::class)->name('transactions');
+    Route::get('/withdrawals', \App\Livewire\Investor\Withdrawals::class)->name('withdrawals');
+    Route::get('/documents', \App\Livewire\Portal\DocumentManager::class)->name('documents');
+    Route::get('/notifications', \App\Livewire\Portal\NotificationCenter::class)->name('notifications');
+    Route::get('/settings', Soon::class)->defaults('portal', 'investor')->defaults('title', 'Settings')->defaults('phase', 'Phase 14')->name('settings');
 });
 
 /* ------------------------------- Business portal ------------------------------ */
 Route::prefix('business')->name('business.')->middleware(['auth', 'verified', 'role:BUSINESS'])->group(function () {
     Route::get('/', \App\Livewire\Business\Dashboard::class)->name('dashboard');
     Route::view('/profile', 'portal.profile', ['portal' => 'business'])->name('profile');
+    Route::get('/documents', \App\Livewire\Portal\DocumentManager::class)->name('documents');
+    Route::get('/notifications', \App\Livewire\Portal\NotificationCenter::class)->name('notifications');
     foreach ([
         'projects' => ['Projects', 'Phase 9'], 'projects/create' => ['Create Project', 'Phase 9'], 'funding' => ['Funding', 'Phase 9'],
         'contracts' => ['Contracts', 'Phase 9'], 'payments' => ['Payments', 'Phase 9'], 'settlements' => ['Settlements', 'Phase 9'],
-        'documents' => ['Documents', 'Phase 3'], 'reports' => ['Reports', 'Phase 12'], 'notifications' => ['Notifications', 'Phase 14'], 'settings' => ['Settings', 'Phase 14'],
+        'reports' => ['Reports', 'Phase 12'], 'settings' => ['Settings', 'Phase 14'],
     ] as $uri => [$title, $phase]) {
         Route::get("/$uri", Soon::class)->defaults('portal', 'business')->defaults('title', $title)->defaults('phase', $phase)->name(str_replace('/', '.', $uri));
     }
@@ -79,6 +84,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'verified', 'role:AD
         'shariah-reviews' => ['shariah-reviews', \App\Livewire\Admin\ShariahReviewsTable::class, 'shariah.review'],
         'audit-logs' => ['audit-logs', \App\Livewire\Admin\AuditLogsTable::class, 'audit.view'],
     ];
+    Route::get('/notifications', \App\Livewire\Portal\NotificationCenter::class)->name('notifications');
     foreach ($pages as $uri => [$name, $component, $permission]) {
         $route = Route::get("/$uri", $component)->name($name);
         if ($permission) {
@@ -87,7 +93,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'verified', 'role:AD
     }
 
     // Arrive in later phases; access control is already enforced.
-    foreach (['reports' => ['Reports', 'reports.view', 'Phase 12'], 'settings' => ['Settings', 'settings.manage', 'Phase 14'], 'notifications' => ['Notifications', null, 'Phase 14']] as $uri => [$title, $permission, $phase]) {
+    foreach (['reports' => ['Reports', 'reports.view', 'Phase 12'], 'settings' => ['Settings', 'settings.manage', 'Phase 14']] as $uri => [$title, $permission, $phase]) {
         $route = Route::get("/$uri", Soon::class)->defaults('portal', 'admin')->defaults('title', $title)->defaults('phase', $phase)->name($uri);
         if ($permission) {
             $route->middleware("permission:$permission");
