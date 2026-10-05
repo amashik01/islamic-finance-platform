@@ -51,8 +51,9 @@ class ChartData
         $out = array_fill_keys(array_keys($series), array_fill_keys($labels, 0));
         foreach ($tx as $t) {
             foreach ($series as $name => $types) {
-                if (in_array($t->type, $types, true)) {
-                    $out[$name][$this->bucket($t->posted_at, $unit)] = ($out[$name][$this->bucket($t->posted_at, $unit)] ?? 0) + $t->amount;
+                $key = $this->bucket($t->posted_at, $unit);
+                if (in_array($t->type, $types, true) && array_key_exists($key, $out[$name])) {
+                    $out[$name][$key] += $t->amount;
                 }
             }
         }
@@ -70,6 +71,7 @@ class ChartData
             $labels[] = $this->bucket($cursor, $unit);
             $cursor = match ($unit) { 'day' => $cursor->addDay(), 'week' => $cursor->addWeek(), default => $cursor->addMonth() };
         }
+        $labels[] = $this->bucket($end, $unit);   // the current period must always be present
 
         return array_values(array_unique($labels));
     }

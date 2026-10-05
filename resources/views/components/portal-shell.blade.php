@@ -31,7 +31,11 @@
             @continue($visible->isEmpty())
             @if($heading)<p class="nav-heading">{{ $heading }}</p>@endif
             @foreach ($visible as $item)
-                @php $active = request()->routeIs($item[1]) || request()->routeIs($item[1].'.*'); @endphp
+                @php
+                    // Active on its own route, or a child route unless a sibling nav item owns that child.
+                    $siblingOwnsIt = $visible->contains(fn ($o) => $o[1] !== $item[1] && str_starts_with($o[1], $item[1].'.') && request()->routeIs($o[1]));
+                    $active = request()->routeIs($item[1]) || (request()->routeIs($item[1].'.*') && ! $siblingOwnsIt);
+                @endphp
                 <a href="{{ route($item[1]) }}" @class(['nav-item', 'nav-item-active' => $active]) @if($active) aria-current="page" @endif>
                     <x-icon :name="$item[2]" class="h-5 w-5 shrink-0 opacity-80" />{{ $item[0] }}
                 </a>

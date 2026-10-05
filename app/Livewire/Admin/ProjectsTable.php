@@ -20,6 +20,11 @@ class ProjectsTable extends DataTable
         return $this->preset === 'review' ? 'Projects pending review' : 'All projects';
     }
 
+    protected function emptyTitle(): string
+    {
+        return $this->preset === 'review' ? 'No projects are waiting for review.' : 'No projects have been submitted yet.';
+    }
+
     protected function authorizeTable(): void
     {
         abort_unless(auth()->user()->can('projects.view'), 403);

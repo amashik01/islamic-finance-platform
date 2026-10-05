@@ -71,3 +71,12 @@ it('shows report centres and dashboard charts', function () {
     $a->assignRole('ADMIN');
     $this->actingAs($a)->get('/admin/dashboard')->assertOk()->assertSee('Capital flow')->assertSee('Contract distribution')->assertSee('Project lifecycle')->assertSee('Monthly activity');
 });
+
+it('charts include the current period so today\'s activity is visible in every range', function (string $range) {
+    $inv = makeInvestor(10000000);
+    app(InvestmentService::class)->invest($inv, makeProject(), Money::minor(1000000), 'chart-'.$range);
+    $c = app(\App\Services\Reports\ChartData::class)->transactionsByBucket(['Invested' => [\App\Enums\TransactionType::Investment], 'Deposits' => [\App\Enums\TransactionType::Deposit]], $range);
+    expect(count($c['labels']))->toBe(count($c['series']['Invested']))->and(array_sum($c['series']['Invested']))->toBe(1000000)->and(array_sum($c['series']['Deposits']))->toBe(10000000);
+    $p = app(\App\Services\Reports\ChartData::class)->portfolio($inv->user_id, $range);
+    expect($p['invested'])->toBe(1000000)->and($p['pending'])->toBe(1000000);
+})->with(['7D', '30D', '3M', '6M', '1Y', 'ALL']);

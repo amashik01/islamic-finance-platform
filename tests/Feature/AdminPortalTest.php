@@ -148,3 +148,11 @@ it('approves and rejects KYC submissions with the right permissions', function (
         ->call('ask', 'reject', $inv->id, 'Reject', true, 'danger')->set('reason', 'Blurry ID')->call('confirm')->assertSet('error', null);
     expect($inv->fresh()->kyc_status)->toBe(KycStatus::Rejected);
 });
+
+it('highlights only the current sidebar item, not its parent', function () {
+    adminAs();
+    $html = $this->get('/admin/projects/pending')->getContent();
+    expect(substr_count($html, 'aria-current="page"'))->toBe(1);
+    $this->get('/admin/projects')->assertSee('No projects have been submitted yet.');
+    $this->get('/admin/projects/pending')->assertSee('No projects are waiting for review.');
+});
