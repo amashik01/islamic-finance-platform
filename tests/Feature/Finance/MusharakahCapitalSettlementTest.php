@@ -71,7 +71,7 @@ it('14-16. Musharakah loss 100,000: investor gets 630,000 back (loses 70,000), b
         ->and(pool(A::BusinessFunds, $p->id))->toBe(27000000)
         ->and((int) \App\Models\LedgerAccount::where('type', A::Clearing)->sum('balance'))->toBe(0)
         ->and((int) \App\Models\LedgerAccount::where('type', A::PlatformCash)->count())->toBe(0)
-        ->and(\App\Models\Transaction::where('type', 'LOSS_RECOGNITION')->sum('amount'))->toBe(10000000);   // economic loss = |net|, recognised once
+        ->and((int) \App\Models\Transaction::where('type', 'LOSS_RECOGNITION')->sum('amount'))->toBe(10000000);   // economic loss = |net|, recognised once
     // Custody now holds exactly what the participants may still draw: 630,000 (wallet balance incl. 100,000 left) + 270,000 business.
     expect((int) \App\Models\LedgerAccount::where('type', A::CustodyCash)->value('balance'))->toBe(10000000 + 63000000 + 27000000);
     expect(reconcile(true)['passed'])->toBeTrue();
@@ -174,7 +174,7 @@ it('Mudarabah ordinary loss 20,000 on 100,000: investor gets 80,000; no Mudarib 
         ->and(pool(A::VentureCapital, $project->id))->toBe(0)
         ->and((int) \App\Models\LedgerAccount::where('type', A::Clearing)->sum('balance'))->toBe(0)
         ->and((int) \App\Models\LedgerAccount::where('type', A::CustodyCash)->value('balance'))->toBe(8000000)   // custody equals what the investor can withdraw
-        ->and(\App\Models\Transaction::where('type', 'LOSS_RECOGNITION')->sum('amount'))->toBe(2000000);
+        ->and((int) \App\Models\Transaction::where('type', 'LOSS_RECOGNITION')->sum('amount'))->toBe(2000000);
     expect(reconcile(true)['passed'])->toBeTrue();
 });
 

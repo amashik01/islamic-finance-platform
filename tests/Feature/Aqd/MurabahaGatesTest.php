@@ -60,13 +60,18 @@ it('no sale or receivable before the sale agreement is executed by both parties'
     expect($r->total_amount)->toBe(11000000)->and($m->fresh()->sale->sale_document_id)->toBe($doc->id)->and(reconcile(true)['passed'])->toBeTrue();
 });
 
-it('a tampered sale agreement cannot be used to execute the sale', function () {
+it('a sale agreement altered after the buyer signed can neither be signed nor used to execute the sale', function () {
     [$contract, $m, $admin, $svc] = possessedMurabaha();
-    readyToSell($m->fresh());
-    $doc = ContractDocument::where('kind', K::MurabahaSale->value)->firstOrFail();
-    \DB::statement('DROP TRIGGER IF EXISTS contract_documents_no_edit');   // an attacker with raw DB access and no trigger
-    \DB::table('contract_documents')->where('id', $doc->id)->update(['content' => $doc->content.' (changed)']);
-    expect(fn () => $svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin))->toThrow(FinancialException::class, 'sale agreement');
+    $m->purchase->forceFill(['possession_on' => now()->subDays(10)])->save();
+    $svc->confirmRiskBorne($m->fresh(), now(), 'Insured warehouse', $admin);
+    $staff = User::factory()->create();
+    $staff->assignRole(\App\Enums\UserRole::Admin->value);
+    $doc = $svc->prepareSaleAgreement($m->fresh(), $staff);
+    signDoc($doc, $contract->project->business->user);
+    \DB::table('contract_documents')->where('id', $doc->id)->update(['content' => $doc->content.' (changed)']);   // allowed only while unexecuted
+    expect(fn () => signDoc($doc->fresh(), $staff))->toThrow(FinancialException::class, 'altered')
+        ->and(fn () => $svc->executeSale($m->fresh(), now(), now()->addMonth(), $admin))->toThrow(FinancialException::class, 'sale agreement');
+    expect(reconcile(true)['results']['Aqd Document Integrity']->errors)->not->toBe([]);
 });
 
 it('a promise is recorded as a promise: mutual promises need an option, one per contract, and it creates no receivable', function () {

@@ -13,6 +13,8 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // PENDING_WAKIL_ACCEPTANCE / PENDING_SHARIAH_REVIEW exceed the original 20 characters (MySQL rejects the truncation).
+        Schema::table('wakalah_appointments', fn (Blueprint $t) => $t->string('status', 30)->default('PROPOSED')->change());
         Schema::table('wakalah_appointments', function (Blueprint $t) {
             $t->string('muwakkil', 30)->nullable()->after('wakil_id');            // PLATFORM | BUSINESS ; null = LEGACY (principal was never recorded)
             $t->foreignId('muwakkil_user_id')->nullable()->after('muwakkil')->constrained('users')->nullOnDelete();
