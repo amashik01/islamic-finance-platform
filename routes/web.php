@@ -44,14 +44,18 @@ Route::prefix('investor')->name('investor.')->middleware(['auth', 'verified', 'r
 Route::prefix('business')->name('business.')->middleware(['auth', 'verified', 'role:BUSINESS'])->group(function () {
     Route::get('/', \App\Livewire\Business\Dashboard::class)->name('dashboard');
     Route::view('/profile', 'portal.profile', ['portal' => 'business'])->name('profile');
+    Route::get('/projects', \App\Livewire\Business\Projects::class)->name('projects');
+    Route::get('/projects/create', \App\Livewire\Business\ProjectWizard::class)->name('projects.create');
+    Route::get('/projects/{project}/edit', \App\Livewire\Business\ProjectWizard::class)->name('projects.edit');
+    Route::get('/projects/{project}', \App\Livewire\Business\ProjectDetails::class)->name('projects.show');
+    Route::get('/funding', \App\Livewire\Business\Funding::class)->name('funding');
+    Route::get('/contracts', \App\Livewire\Business\Contracts::class)->name('contracts');
+    Route::get('/payments', \App\Livewire\Business\Payments::class)->name('payments');
+    Route::get('/settlements', \App\Livewire\Business\Settlements::class)->name('settlements');
     Route::get('/documents', \App\Livewire\Portal\DocumentManager::class)->name('documents');
     Route::get('/notifications', \App\Livewire\Portal\NotificationCenter::class)->name('notifications');
-    foreach ([
-        'projects' => ['Projects', 'Phase 9'], 'projects/create' => ['Create Project', 'Phase 9'], 'funding' => ['Funding', 'Phase 9'],
-        'contracts' => ['Contracts', 'Phase 9'], 'payments' => ['Payments', 'Phase 9'], 'settlements' => ['Settlements', 'Phase 9'],
-        'reports' => ['Reports', 'Phase 12'], 'settings' => ['Settings', 'Phase 14'],
-    ] as $uri => [$title, $phase]) {
-        Route::get("/$uri", Soon::class)->defaults('portal', 'business')->defaults('title', $title)->defaults('phase', $phase)->name(str_replace('/', '.', $uri));
+    foreach (['reports' => ['Reports', 'Phase 12'], 'settings' => ['Settings', 'Phase 14']] as $uri => [$title, $phase]) {
+        Route::get("/$uri", Soon::class)->defaults('portal', 'business')->defaults('title', $title)->defaults('phase', $phase)->name($uri);
     }
 });
 
