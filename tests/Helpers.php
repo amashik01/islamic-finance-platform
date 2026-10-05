@@ -70,3 +70,16 @@ function makeProject(array $attrs = [], ?Business $business = null): Project
 
     return $p;
 }
+
+function activeContract(\App\Models\Project $project, array $terms = []): \App\Models\Contract
+{
+    $c = new \App\Models\Contract(['contract_number' => \App\Models\Contract::nextNumber($project->contract_type), 'contract_type' => $project->contract_type, 'project_id' => $project->id, 'currency' => 'BDT']);
+    $c->forceFill(['status' => \App\Enums\ContractStatus::Active])->save();
+    match ($project->contract_type) {
+        \App\Enums\ContractType::Mudarabah => $c->mudarabah()->create($terms + ['capital_required' => 10000000, 'investor_profit_bps' => 7000, 'business_profit_bps' => 3000]),
+        \App\Enums\ContractType::Musharakah => $c->musharakah()->create($terms + ['total_capital' => 100000000, 'investor_contribution' => 70000000, 'business_contribution' => 30000000, 'investor_ownership_bps' => 7000, 'business_ownership_bps' => 3000, 'investor_profit_bps' => 5000, 'business_profit_bps' => 5000, 'loss_allocation_basis' => \App\Enums\LossAllocationBasis::CapitalRatio]),
+        \App\Enums\ContractType::Murabaha => $c->murabaha()->create($terms + ['purchase_cost' => 10000000, 'sale_profit' => 1000000, 'sale_price' => 11000000, 'installments_count' => 4]),
+    };
+
+    return $c->fresh();
+}
